@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageOps
 
-from api import LunaVisiaAPI
+from services.api import LunaVisiaAPI
 from config import UIConfig
 
 

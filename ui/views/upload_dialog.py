@@ -10,7 +10,7 @@ from uuid import uuid4
 import httpx
 import streamlit as st
 
-from tabs.shared import ImageLabel, VisiaTab
+from views.shared import ImageLabel, VisiaTab
 
 
 class UploadDialog(VisiaTab):

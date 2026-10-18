@@ -1,9 +1,9 @@
 """Favorites tab: the View Images gallery limited to favorite images."""
 
-from images import ImageCollection
-from tabs.actions import FavoriteActions
-from tabs.gallery import ImageGallery
-from tabs.shared import SearchFilter, VisiaTab
+from services.images import ImageCollection
+from views.actions import FavoriteActions
+from views.gallery import ImageGallery
+from views.shared import SearchFilter, VisiaTab
 
 
 class FavoritesTab(VisiaTab):

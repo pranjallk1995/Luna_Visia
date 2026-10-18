@@ -3,12 +3,12 @@
 import httpx
 import streamlit as st
 
-from api import LunaVisiaAPI
-from images import ImageCollection
-from state import SessionState
-from tabs.actions import HiddenActions
-from tabs.gallery import ImageGallery
-from tabs.shared import SearchFilter, VisiaTab
+from services.api import LunaVisiaAPI
+from services.images import ImageCollection
+from services.state import SessionState
+from views.actions import HiddenActions
+from views.gallery import ImageGallery
+from views.shared import SearchFilter, VisiaTab
 
 
 class HiddenAccessGate:

@@ -9,13 +9,13 @@ import streamlit as st
 from PIL import Image
 
 from config import UIConfig
-from state import SessionState
+from services.state import SessionState
 from styles import LunaStyle
-from tabs.favorites_tab import FavoritesTab
-from tabs.hidden_tab import HiddenTab
-from tabs.shared import VisiaContext
-from tabs.upload_dialog import UploadDialog
-from tabs.view_tab import ViewTab
+from views.favorites_tab import FavoritesTab
+from views.hidden_tab import HiddenTab
+from views.shared import VisiaContext
+from views.upload_dialog import UploadDialog
+from views.view_tab import ViewTab
 
 
 class GalleryNavigation:

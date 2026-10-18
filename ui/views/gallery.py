@@ -7,12 +7,12 @@ import httpx
 import streamlit as st
 from st_img_selector import st_img_selector
 
-from images import ImageCollection
-from state import SessionState
-from tabs.actions import GalleryActions
-from tabs.pager import GalleryPager
-from tabs.preview_dialog import ImagePreviewDialog
-from tabs.shared import ImageLabel, VisiaContext
+from services.images import ImageCollection
+from services.state import SessionState
+from views.actions import GalleryActions
+from views.pager import GalleryPager
+from views.preview_dialog import ImagePreviewDialog
+from views.shared import ImageLabel, VisiaContext
 
 
 class ImageGallery:

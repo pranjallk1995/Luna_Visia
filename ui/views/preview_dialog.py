@@ -8,8 +8,8 @@ import httpx
 import streamlit as st
 
 from config import UIConfig
-from images import ImageFiles
-from tabs.actions import GalleryActions
+from services.images import ImageFiles
+from views.actions import GalleryActions
 
 
 @dataclass(frozen=True)

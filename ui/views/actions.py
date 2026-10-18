@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from api import LunaVisiaAPI
-from state import SessionState
+from services.api import LunaVisiaAPI
+from services.state import SessionState
 
 
 @dataclass(frozen=True)

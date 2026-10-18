@@ -265,6 +265,41 @@ Stores the singleton optional public base URL used to generate immutable-ID imag
 
 The idempotent schema in `mcp/app/database.py` runs when the MCP service starts and applies additive upgrades for existing installations.
 
+## Project structure
+
+Luna Vita, Luna Lumia, and Luna Visia share this layout:
+
+```text
+.
+├── docker-compose.yaml     # services, private network, and Compose Watch rules
+├── README.md
+├── UI_STYLE_GUIDE.md       # shared Luna visual reference
+├── docs/assets/            # README screenshots
+├── mcp/                    # FastMCP server: MCP tools plus UI-facing HTTP routes
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── app/                # main.py composition root, config, database, models,
+│   │                       # repositories, services, mcp_tools, http_routes,
+│   │                       # and the app's own domain modules
+│   ├── scripts/            # one-off maintenance scripts, when needed
+│   └── tests/              # python -m unittest discover -s tests
+└── ui/                     # Streamlit interface
+    ├── Dockerfile
+    ├── requirements.txt
+    ├── .streamlit/         # Streamlit theme and server settings
+    ├── assets/             # logos
+    ├── app.py              # entry point and page composition
+    ├── config.py           # environment-backed settings
+    ├── styles.py           # shared dark theme
+    ├── services/           # backend API client, caching, and session state
+    ├── domain/             # Streamlit-free logic and view models, when the app has any
+    ├── views/              # Streamlit rendering: tabs, sections, dialogs, shared widgets
+    └── tests/              # UI logic tests, when the app has any
+```
+
+Dependencies point one way: `views/` uses `services/` and `domain/`, and `domain/`
+imports neither Streamlit nor the API client, so it can be tested on its own.
+
 ## Development workflow
 
 Use Docker Compose Watch to keep the running development stack aligned with local
@@ -292,19 +327,19 @@ change so the client refreshes its discovered tool catalog.
 ### UI modules
 
 - `ui/app.py` - `LunaVisiaApp` composition root: header, `GalleryNavigation`, and the upload dialog; each section is a tab class.
-- `ui/api.py` - `LunaVisiaAPI` keeps backend routes, the Hidden Vault token header, timeouts, and error text out of the views.
+- `ui/services/api.py` - `LunaVisiaAPI` keeps backend routes, the Hidden Vault token header, timeouts, and error text out of the views.
 - `ui/config.py` - `UIConfig` reads UI environment settings such as the image directory, API URL, gallery size, and supported image formats.
-- `ui/state.py` - `SessionState` owns session-state defaults and cross-view transitions (pending delete/hide, gallery refresh, Hidden Vault token).
-- `ui/images.py` - `ImageFiles` (vault file listing and cached thumbnails, previews, and size facts) and `ImageCollection` (files plus metadata, search filtering).
+- `ui/services/state.py` - `SessionState` owns session-state defaults and cross-view transitions (pending delete/hide, gallery refresh, Hidden Vault token).
+- `ui/services/images.py` - `ImageFiles` (vault file listing and cached thumbnails, previews, and size facts) and `ImageCollection` (files plus metadata, search filtering).
 - `ui/styles.py` - `LunaStyle` maintains the shared dark visual system, component spacing, and control styling.
-- `ui/tabs/shared.py` - `VisiaContext` (shared dependencies), `VisiaTab` base class, `ResponsiveLayout`, `SearchFilter`, and `ImageLabel`.
-- `ui/tabs/gallery.py` - `ImageGallery`, the grid/list gallery with favorite overlay, item menu, and confirmation dialogs used by every section.
-- `ui/tabs/actions.py` - `GalleryActions`, `FavoriteActions`, and `HiddenActions`: what each section's gallery may do with an image.
-- `ui/tabs/pager.py` - `GalleryPager`, pagination with the animated page transition.
-- `ui/tabs/preview_dialog.py` - `ImagePreviewDialog`, full-size viewing with inline caption and tag editing.
-- `ui/tabs/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; `hidden_tab.py` also holds `HiddenAccessGate` (setup, unlock, reset).
-- `ui/tabs/upload_dialog.py` - `UploadDialog`: upload handling, progress feedback, retries, and newly generated captions and tags.
-- `ui/tabs/__init__.py` - marks the tab-module directory as a Python package.
+- `ui/views/shared.py` - `VisiaContext` (shared dependencies), `VisiaTab` base class, `ResponsiveLayout`, `SearchFilter`, and `ImageLabel`.
+- `ui/views/gallery.py` - `ImageGallery`, the grid/list gallery with favorite overlay, item menu, and confirmation dialogs used by every section.
+- `ui/views/actions.py` - `GalleryActions`, `FavoriteActions`, and `HiddenActions`: what each section's gallery may do with an image.
+- `ui/views/pager.py` - `GalleryPager`, pagination with the animated page transition.
+- `ui/views/preview_dialog.py` - `ImagePreviewDialog`, full-size viewing with inline caption and tag editing.
+- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; `hidden_tab.py` also holds `HiddenAccessGate` (setup, unlock, reset).
+- `ui/views/upload_dialog.py` - `UploadDialog`: upload handling, progress feedback, retries, and newly generated captions and tags.
+- `ui/views/__init__.py`, `ui/services/__init__.py` - mark the view and service directories as Python packages.
 - `ui/.streamlit/config.toml` - Streamlit theme settings.
 - `ui/requirements.txt` - Python dependencies used by the UI container.
 - `ui/Dockerfile` - builds the UI container image.

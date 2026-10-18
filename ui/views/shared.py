@@ -5,10 +5,10 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from api import LunaVisiaAPI
+from services.api import LunaVisiaAPI
 from config import UIConfig
-from images import ImageCollection, ImageFiles
-from state import SessionState
+from services.images import ImageCollection, ImageFiles
+from services.state import SessionState
 
 
 class ResponsiveLayout:
