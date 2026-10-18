@@ -125,6 +125,7 @@ Open:
 
 - UI: <http://127.0.0.1:18501>
 - Service health: <http://127.0.0.1:18000/health>
+- Favicon and icons: <http://127.0.0.1:18000/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
 - MCP endpoint: <http://127.0.0.1:18000/mcp>
 
 The built-in development credentials work without creating a `.env` file:
@@ -357,6 +358,7 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/app/remote.py` - `ImageSourceResolver` for Base64, data-URL, and SSRF-guarded HTTPS upload sources.
 - `mcp/app/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
 - `mcp/app/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
+- `mcp/app/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.
 - `mcp/app/security.py` - `HiddenVaultAuth` with `CredentialPolicy` (password/PIN validation and hashing) and `SessionStore` (in-memory sessions).
 - `mcp/app/config.py` - reads and validates MCP settings, including database, image, Ollama, and vision-model configuration.
 - `mcp/app/__init__.py` - marks the MCP application directory as a Python package.

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 import tempfile
 import unittest
 import zipfile
@@ -20,6 +21,7 @@ from fakes import (
     png_payload,
 )
 
+from app.branding import ServerBranding
 from app.config import AppConfig
 from app.http_routes import TOKEN_HEADER, VisiaHTTPRoutes
 from app.mcp_tools import VisiaMCPTools
@@ -52,14 +54,16 @@ class ServerTestCase(unittest.TestCase):
         self.auth = HiddenVaultAuth(
             FakeCredentialRepository(), CredentialPolicy(100_000), SessionStore(60)
         )
-        self.server = FastMCP("Luna Visia test")
+        self.branding = ServerBranding()
+        # Match production: a non-localhost bind leaves DNS-rebinding checks off for TestClient.
+        self.server = FastMCP("Luna Visia test", host="0.0.0.0", icons=self.branding.mcp_icons())
         VisiaMCPTools(
             self.server,
             self.service,
             ImageSourceResolver(self.config.max_fetch_bytes, self.config.max_upload_redirects),
             PreviewRenderer(self.config.display_max_edge),
         )
-        VisiaHTTPRoutes(self.server, self.service, self.auth)
+        VisiaHTTPRoutes(self.server, self.service, self.auth, self.branding)
         self.service.visible.ingest("one.png", png_payload("red", (1200, 800)))
         self.service.visible.ingest("two.png", png_payload("blue", (640, 480)))
 
@@ -218,6 +222,61 @@ class HTTPRouteTests(ServerTestCase):
         self.assertEqual([image["name"] for image in images], ["one.png"])
         self.assertEqual(updated.json()["tags"], ["cat", "sofa", "private"])
         self.assertEqual(locked.status_code, 401)
+
+
+class BrandingTests(ServerTestCase):
+    def test_favicon_route_serves_icon(self) -> None:
+        with self.client() as client:
+            response = client.get("/favicon.ico")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/x-icon")
+        with PillowImage.open(BytesIO(response.content)) as icon:
+            self.assertEqual(icon.format, "ICO")
+
+    def test_icon_route_serves_bundled_png_sizes(self) -> None:
+        with self.client() as client:
+            for size in ServerBranding.ICON_SIZES:
+                response = client.get(f"/icons/icon-{size}.png")
+                self.assertEqual(response.status_code, 200)
+                with PillowImage.open(BytesIO(response.content)) as icon:
+                    self.assertEqual(icon.size, (size, size))
+
+    def test_icon_route_rejects_unknown_names(self) -> None:
+        with self.client() as client:
+            for name in ("icon-1.png", "favicon.ico", "..%2Fbranding.py"):
+                self.assertNotEqual(client.get(f"/icons/{name}").status_code, 200)
+
+    def test_initialize_advertises_server_icons(self) -> None:
+        request = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"},
+            },
+        }
+        with self.client() as client:
+            response = client.post(
+                "/mcp",
+                json=request,
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = next(
+            line.removeprefix("data:").strip()
+            for line in response.text.splitlines()
+            if line.startswith("data:")
+        )
+        icons = json.loads(data)["result"]["serverInfo"]["icons"]
+        self.assertEqual([icon["sizes"] for icon in icons], [["48x48"], ["96x96"]])
+        for icon in icons:
+            self.assertEqual(icon["mimeType"], "image/png")
+            header, payload = icon["src"].split(",", 1)
+            self.assertEqual(header, "data:image/png;base64")
+            with PillowImage.open(BytesIO(base64.b64decode(payload))) as image:
+                self.assertEqual(f"{image.width}x{image.height}", icon["sizes"][0])
 
 
 if __name__ == "__main__":

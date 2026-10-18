@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 
+from .branding import ServerBranding
 from .models import MetadataChange
 from .security import HiddenVaultAuth
 from .services import VisiaService
@@ -22,11 +23,22 @@ class VisiaHTTPRoutes:
         "Cache-Control": "private, max-age=300",
         "X-Content-Type-Options": "nosniff",
     }
+    ICON_HEADERS = {
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+    }
 
-    def __init__(self, server: FastMCP, service: VisiaService, auth: HiddenVaultAuth) -> None:
+    def __init__(
+        self,
+        server: FastMCP,
+        service: VisiaService,
+        auth: HiddenVaultAuth,
+        branding: ServerBranding,
+    ) -> None:
         self.server = server
         self.service = service
         self.auth = auth
+        self.branding = branding
         self._register()
 
     @staticmethod
@@ -85,6 +97,7 @@ class VisiaHTTPRoutes:
 
     def _register(self) -> None:
         self.route("GET", "/health", self.health)
+        self._register_icons()
         self._register_images()
         self._register_favorites()
         self._register_hidden_access()
@@ -92,6 +105,24 @@ class VisiaHTTPRoutes:
 
     async def health(self, request: Request) -> dict:
         return {"status": "ok", "service": "luna-visia"}
+
+    def _register_icons(self) -> None:
+        branding = self.branding
+
+        async def favicon(request: Request):
+            return FileResponse(
+                branding.favicon_path(), media_type="image/x-icon", headers=self.ICON_HEADERS
+            )
+
+        async def icon(request: Request):
+            return FileResponse(
+                branding.icon_path(self.name(request)),
+                media_type="image/png",
+                headers=self.ICON_HEADERS,
+            )
+
+        self.route("GET", "/favicon.ico", favicon)
+        self.route("GET", "/icons/{name}", icon)
 
     def _register_images(self) -> None:
         visible = self.service.visible

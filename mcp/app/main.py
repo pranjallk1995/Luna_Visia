@@ -3,6 +3,7 @@
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
+from .branding import ServerBranding
 from .config import AppConfig
 from .database import Database
 from .http_routes import VisiaHTTPRoutes
@@ -38,14 +39,17 @@ class LunaVisiaApplication:
             CredentialPolicy(config.password_hash_iterations),
             SessionStore(config.hidden_session_seconds),
         )
-        self.mcp = FastMCP("Luna Visia", host=config.host, port=config.port)
+        self.branding = ServerBranding()
+        self.mcp = FastMCP(
+            "Luna Visia", host=config.host, port=config.port, icons=self.branding.mcp_icons()
+        )
         VisiaMCPTools(
             self.mcp,
             self.service,
             ImageSourceResolver(config.max_fetch_bytes, config.max_upload_redirects),
             PreviewRenderer(config.display_max_edge),
         )
-        VisiaHTTPRoutes(self.mcp, self.service, self.auth)
+        VisiaHTTPRoutes(self.mcp, self.service, self.auth, self.branding)
 
     def run(self) -> None:
         """Serve Luna Visia over the streamable HTTP transport."""
