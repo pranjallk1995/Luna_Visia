@@ -428,33 +428,6 @@ class LunaStyle:
                 .st-key-gallery_navigation div[data-testid="stButtonGroup"] button p { font-size:0!important; line-height:0!important; }
                 .st-key-gallery_navigation div[data-testid="stButtonGroup"] button span[data-testid="stIconMaterial"],
                 .st-key-gallery_navigation div[data-testid="stButtonGroup"] button .material-symbols-rounded { font-size:1.25rem!important; line-height:1!important; }
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button::after {
-                    position:absolute;
-                    top:calc(100% + .45rem);
-                    left:50%;
-                    z-index:50;
-                    padding:.28rem .48rem;
-                    border:1px solid var(--lv-border);
-                    border-radius:.4rem;
-                    background:var(--lv-surface);
-                    color:var(--lv-text);
-                    box-shadow:0 8px 20px rgba(0,0,0,.28);
-                    font-size:.72rem;
-                    line-height:1rem;
-                    white-space:nowrap;
-                    opacity:0;
-                    pointer-events:none;
-                    transform:translate(-50%,-.2rem);
-                    transition:opacity 120ms ease,transform 120ms ease;
-                }
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button:nth-of-type(1)::after { content:"View Images"; }
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button:nth-of-type(2)::after { content:"Favorite Images"; }
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button:nth-of-type(3)::after { content:"Hidden Images"; }
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button:hover::after,
-                .st-key-gallery_navigation div[data-testid="stButtonGroup"] button:focus-visible::after {
-                    opacity:1;
-                    transform:translate(-50%,0);
-                }
             }
             </style>
             """,

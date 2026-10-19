@@ -128,7 +128,6 @@ class LunaVisiaApp:
             ):
                 column.button(
                     icon,
-                    help=label,
                     type="primary" if view_mode == mode else "secondary",
                     key=f"use_{mode}_view",
                     on_click=SessionState.set_gallery_view,
