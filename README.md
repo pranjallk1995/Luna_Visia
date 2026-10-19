@@ -218,9 +218,9 @@ Luna Visia exposes these tools to connected MCP clients:
 
 ### Metadata, search, and collections
 
-- `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis.
+- `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis. Tags must be lowercase: a tag with capital letters is rejected and nothing is changed.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
-- `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results.
+- `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. Tag filters must be lowercase too.
 - `backfill_metadata` - generate missing or stale metadata for imported files.
 
 ### URL configuration

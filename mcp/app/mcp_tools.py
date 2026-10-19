@@ -7,7 +7,7 @@ import anyio
 from mcp.server.fastmcp import FastMCP, Image as MCPImage
 from pydantic import BaseModel, ConfigDict, WithJsonSchema
 
-from .models import MetadataChange
+from .models import MetadataChange, MetadataRules
 from .remote import ImageSourceResolver
 from .services import VisiaService
 
@@ -120,10 +120,12 @@ class VisiaMCPTools:
         ):
             """Search visible filenames, captions, and tags without opening files.
 
+            Tags must be lowercase; a tag containing capital letters is rejected.
             Results include each image's public_url; follow next_offset for more.
             Set include_preview=true to also get a numbered contact sheet of the
             first 20 results.
             """
+            MetadataRules.require_lowercase_tags(tags, "tags")
             results = search.search(query, tags, match_all_tags, limit, offset)
             return await self.with_preview(results, "results", include_preview)
 
@@ -255,7 +257,13 @@ class VisiaMCPTools:
             add_tags: list[str] | None = None,
             remove_tags: list[str] | None = None,
         ) -> dict[str, Any]:
-            """Edit a visible image caption and add or remove searchable tags."""
+            """Edit a visible image caption and add or remove searchable tags.
+
+            Tags must be lowercase; a tag containing capital letters is rejected
+            and nothing is changed.
+            """
+            MetadataRules.require_lowercase_tags(add_tags, "add_tags")
+            MetadataRules.require_lowercase_tags(remove_tags, "remove_tags")
             change = MetadataChange(caption, add_tags, remove_tags)
             return {"status": "metadata_updated", **visible.update_metadata(name, change)}
 

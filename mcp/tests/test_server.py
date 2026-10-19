@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PIL import Image as PillowImage
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from fakes import (
@@ -226,6 +227,35 @@ class MCPToolTests(ServerTestCase):
         self.service.hidden.set_hidden(["one.png"], True)
         with self.assertRaises(Exception):
             self.call("fetch_images", {"names": ["one.png"], "delivery": "zip"})
+
+
+class LowercaseTagToolTests(ServerTestCase):
+    """MCP tools reject capitalized tags instead of silently lowercasing them."""
+
+    def tags_of(self, name: str) -> list[str]:
+        return self.repository.get(name)["tags"]
+
+    def test_capitalized_add_tags_are_rejected_without_changes(self) -> None:
+        before = self.tags_of("one.png")
+
+        with self.assertRaisesRegex(ToolError, "add_tags must be lowercase.*'dinner'"):
+            self.call("update_image_metadata", {"name": "one.png", "add_tags": ["food", "Dinner"]})
+
+        self.assertEqual(self.tags_of("one.png"), before)
+
+    def test_capitalized_remove_tags_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ToolError, "remove_tags must be lowercase"):
+            self.call("update_image_metadata", {"name": "one.png", "remove_tags": ["CAT"]})
+
+    def test_capitalized_search_tags_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ToolError, "tags must be lowercase"):
+            self.call("search_images", {"tags": ["Cat"]})
+
+    def test_lowercase_tags_are_accepted(self) -> None:
+        result = self.call("update_image_metadata", {"name": "one.png", "add_tags": ["dinner"]})
+
+        self.assertIn("dinner", result["tags"])
+        self.assertIsInstance(self.call("search_images", {"tags": ["dinner"]}), dict)
 
 
 class ChatUploadToolTests(ServerTestCase):

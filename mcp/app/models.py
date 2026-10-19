@@ -49,6 +49,18 @@ class MetadataRules:
         self.max_tags = max_tags
         self.search_stop_words = search_stop_words
 
+    @staticmethod
+    def require_lowercase_tags(tags: list[str] | None, field: str) -> list[str] | None:
+        """Reject tags containing capital letters instead of silently lowercasing them."""
+        capitalized = [tag for tag in tags or [] if tag != tag.lower()]
+        if capitalized:
+            suggestions = ", ".join(repr(tag.lower()) for tag in capitalized)
+            raise ValueError(
+                f"{field} must be lowercase; capital letters are not allowed in tags. "
+                f"Use {suggestions} instead."
+            )
+        return tags
+
     def normalize_tags(self, tags: list[str]) -> list[str]:
         """Normalize, deduplicate, and bound search tags."""
         normalized = []
