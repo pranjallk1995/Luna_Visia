@@ -29,7 +29,7 @@ from app.config import AppConfig
 from app.downloads import DownloadStore
 from app.http_routes import TOKEN_HEADER, VisiaHTTPRoutes
 from app.mcp_tools import VisiaMCPTools
-from app.media import ImageArchive, PreviewRenderer
+from app.media import ImageArchive, PreviewRenderer, display_name
 from app.remote import ImageSourceResolver
 from app.security import CredentialPolicy, HiddenVaultAuth, SessionStore
 from app.services import VisiaService
@@ -71,7 +71,6 @@ class ServerTestCase(unittest.TestCase):
                 self.config.max_image_bytes,
                 self.config.max_upload_redirects,
             ),
-            PreviewRenderer(self.config.display_max_edge),
         )
         VisiaHTTPRoutes(self.server, self.service, self.auth, self.branding)
         self.service.visible.ingest("one.png", png_payload("red", (1200, 800)))
@@ -117,10 +116,16 @@ class MCPToolTests(ServerTestCase):
         with self.assertRaisesRegex(ValueError, "public"):
             self.resolver().resolve(None, "https://127.0.0.1/cat.png")
 
-    def test_view_image_returns_displayable_image_data(self) -> None:
-        content = self.call("view_image", {"name": "one.png"}).to_image_content()
+    def test_view_image_returns_image_with_caption_and_link(self) -> None:
+        image, summary = self.call("view_image", {"name": "one.png"})
+        content = image.to_image_content()
         self.assertEqual(content.mimeType, "image/jpeg")
         self.assertTrue(base64.b64decode(content.data))
+        [item] = summary["previewed"]
+        self.assertEqual(item["name"], "one.png")
+        self.assertTrue(item["public_url"].endswith("/api/public/images/image-1"))
+        self.assertNotIn("note", summary)
+        self.assertEqual(set(item), {"number", "name", "caption", "public_url"})
 
     def test_get_image_url_returns_visible_https_location(self) -> None:
         self.assertEqual(
@@ -153,6 +158,58 @@ class MCPToolTests(ServerTestCase):
         self.service.hidden.set_hidden(["one.png"], True)
         with self.assertRaises(Exception):
             self.call("fetch_images", {"names": ["one.png"]})
+
+    def test_display_skips_unavailable_names_instead_of_failing(self) -> None:
+        self.service.hidden.set_hidden(["two.png"], True)
+        image, summary = self.call(
+            "fetch_images", {"names": ["one.png", "renamed_away.png", "two.png"]}
+        )
+        self.assertEqual([item["name"] for item in summary["previewed"]], ["one.png"])
+        self.assertEqual(summary["unavailable"], ["renamed_away.png", "two.png"])
+        self.assertTrue(image.to_image_content().data)
+
+    def test_display_numbers_tiles_in_request_order(self) -> None:
+        _, summary = self.call("fetch_images", {"names": ["two.png", "one.png"]})
+        self.assertEqual(
+            [(item["number"], item["name"]) for item in summary["previewed"]],
+            [(1, "two.png"), (2, "one.png")],
+        )
+        self.assertIn("contact sheet", summary["note"])
+
+    def test_display_is_not_limited_by_original_file_sizes(self) -> None:
+        self.service.visible.max_fetch_bytes = 1
+        image, _ = self.call("fetch_images", {"names": ["one.png", "two.png"]})
+        self.assertTrue(image.to_image_content().data)
+
+    def test_display_caps_image_count_and_points_to_zip(self) -> None:
+        names = [f"image_{index}.png" for index in range(self.config.max_fetch_images + 1)]
+        with self.assertRaisesRegex(Exception, "zip"):
+            self.call("fetch_images", {"names": names})
+
+    def test_list_images_pages_compact_summaries(self) -> None:
+        for index in range(3):
+            self.service.visible.ingest(f"extra_{index}.png", png_payload("red", (5 + index, 3)))
+        first = self.call("list_images", {"limit": 2})
+        self.assertEqual((first["count"], first["offset"], first["next_offset"]), (5, 0, 2))
+        self.assertEqual(
+            set(first["images"][0]),
+            {"name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url"},
+        )
+        last = self.call("list_images", {"limit": 2, "offset": 4})
+        self.assertEqual((len(last["images"]), last["next_offset"]), (1, None))
+
+    def test_list_images_can_include_preview(self) -> None:
+        listing, image, preview = self.call("list_images", {"include_preview": True})
+        self.assertEqual(listing["count"], 2)
+        self.assertTrue(image.to_image_content().data)
+        self.assertEqual(len(preview["preview"]["previewed"]), 2)
+
+    def test_search_returns_links_and_optional_preview(self) -> None:
+        results = self.call("search_images", {"query": "cat"})
+        self.assertTrue(all(item["public_url"] for item in results["results"]))
+        self.assertIsNone(results["next_offset"])
+        listing, image, preview = self.call("search_images", {"query": "cat", "include_preview": True})
+        self.assertEqual(len(preview["preview"]["previewed"]), listing["count"])
 
     def test_fetch_images_zip_returns_download_link_not_blob(self) -> None:
         result = self.call("fetch_images", {"names": ["one.png", "two.png"], "delivery": "zip"})
@@ -261,10 +318,24 @@ class MediaTests(ServerTestCase):
             self.assertEqual(image.format, "JPEG")
             self.assertLessEqual(max(image.size), self.config.display_max_edge)
 
-    def test_multiple_display_returns_one_contact_sheet(self) -> None:
-        jpeg = PreviewRenderer(768).render([self.root / "one.png", self.root / "two.png"])
-        with PillowImage.open(BytesIO(jpeg)) as image:
-            self.assertEqual(image.size, (1024, 424))
+    def test_contact_sheets_stay_near_square_and_readable(self) -> None:
+        renderer = PreviewRenderer(768)
+        for count, columns in ((2, 2), (8, 3), (20, 5)):
+            with self.subTest(count=count):
+                jpeg = renderer.render([self.root / "one.png"] * count)
+                with PillowImage.open(BytesIO(jpeg)) as image:
+                    self.assertEqual(image.width, PreviewRenderer.SHEET_WIDTH // columns * columns)
+                    self.assertLessEqual(image.height, 1600)
+
+    def test_transparent_palette_images_are_flattened(self) -> None:
+        path = self.root / "logo.png"
+        PillowImage.new("P", (20, 20)).save(path, transparency=0)
+        with PillowImage.open(BytesIO(PreviewRenderer(768).render([path]))) as image:
+            self.assertEqual(image.mode, "RGB")
+
+    def test_display_name_drops_upload_prefix(self) -> None:
+        self.assertEqual(display_name(f"{'a' * 32}_Big_Ben.png"), "Big_Ben.png")
+        self.assertEqual(display_name("plain.png"), "plain.png")
 
     def test_archive_stores_originals_uncompressed(self) -> None:
         destination = Path(self.downloads_temp.name) / "test.zip"

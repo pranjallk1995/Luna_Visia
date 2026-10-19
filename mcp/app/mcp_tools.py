@@ -7,7 +7,6 @@ import anyio
 from mcp.server.fastmcp import FastMCP, Image as MCPImage
 from pydantic import BaseModel, ConfigDict, WithJsonSchema
 
-from .media import PreviewRenderer
 from .models import MetadataChange
 from .remote import ImageSourceResolver
 from .services import VisiaService
@@ -69,18 +68,26 @@ class VisiaMCPTools:
         server: FastMCP,
         service: VisiaService,
         sources: ImageSourceResolver,
-        previews: PreviewRenderer,
     ) -> None:
         self.server = server
         self.service = service
         self.sources = sources
-        self.previews = previews
         self._register_library_tools()
         self._register_delivery_tools()
         self._register_mutation_tools()
 
-    def preview(self, paths) -> MCPImage:
-        return MCPImage(data=self.previews.render(paths), format="jpeg")
+    def preview(self, names: list[str]) -> list:
+        """Render a preview as image content plus a JSON key to its tiles."""
+        result = self.service.previews.preview(names)
+        return [MCPImage(data=result.jpeg, format="jpeg"), result.summary()]
+
+    async def with_preview(self, listing: dict[str, Any], items_key: str, include_preview: bool):
+        """Return ``listing``, adding a contact sheet of its first images on request."""
+        names = [item["name"] for item in listing[items_key]][: self.service.previews.max_images]
+        if not include_preview or not names:
+            return listing
+        image, summary = await offload(self.preview, names)
+        return [listing, image, {"preview": summary}]
 
     def _register_library_tools(self) -> None:
         server, visible, search, indexer = (
@@ -91,20 +98,34 @@ class VisiaMCPTools:
         )
 
         @server.tool()
-        def list_images() -> list[dict[str, Any]]:
-            """List non-hidden stored images with persisted captions and tags."""
-            return visible.list()
+        async def list_images(limit: int = 50, offset: int = 0, include_preview: bool = False):
+            """List visible images newest first, one page at a time.
+
+            Each image has its exact name, caption, tags, favorite flag, size, and
+            public_url. Follow next_offset for the next page (it is null on the
+            last page). Set include_preview=true to also get a numbered contact
+            sheet of the first 20 images on the page.
+            """
+            listing = visible.list_page(limit, offset, self.service.search.limit_max)
+            return await self.with_preview(listing, "images", include_preview)
 
         @server.tool()
-        def search_images(
+        async def search_images(
             query: str = "",
             tags: list[str] | None = None,
             match_all_tags: bool = False,
             limit: int = 50,
             offset: int = 0,
-        ) -> dict[str, Any]:
-            """Search non-hidden filenames, captions, and tags without opening files."""
-            return search.search(query, tags, match_all_tags, limit, offset)
+            include_preview: bool = False,
+        ):
+            """Search visible filenames, captions, and tags without opening files.
+
+            Results include each image's public_url; follow next_offset for more.
+            Set include_preview=true to also get a numbered contact sheet of the
+            first 20 results.
+            """
+            results = search.search(query, tags, match_all_tags, limit, offset)
+            return await self.with_preview(results, "results", include_preview)
 
         @server.tool()
         async def backfill_metadata() -> dict[str, Any]:
@@ -120,9 +141,9 @@ class VisiaMCPTools:
         )
 
         @server.tool()
-        def view_image(name: str) -> MCPImage:
-            """Return a displayable preview of one non-hidden stored image."""
-            return self.preview([visible.path(name)])
+        async def view_image(name: str):
+            """Show a preview of one visible image, with its caption and public_url."""
+            return await offload(self.preview, [name])
 
         @server.tool()
         def get_image_url(name: str) -> dict[str, str]:
@@ -141,11 +162,12 @@ class VisiaMCPTools:
 
         @server.tool()
         async def fetch_images(names: list[str], delivery: Literal["display", "zip"] = "display"):
-            """Fetch visible images for chat display or as a downloadable ZIP.
+            """Show visible images in chat, or package them as a downloadable ZIP.
 
             Use exact filenames returned by list_images or search_images.
-            - display: returns one preview or a labeled contact sheet (at most 20
-              images, 50 MiB of originals).
+            - display: one preview, or a numbered contact sheet for up to 20
+              images, plus each image's caption and public_url. Names that are no
+              longer available are listed under "unavailable" instead of failing.
             - zip: packages the original files on the server and returns a
               download_url (at most 200 images, 2 GiB). Give the user that link
               exactly as returned; it expires at expires_at (24 hours) and the
@@ -154,7 +176,7 @@ class VisiaMCPTools:
             """
             if delivery == "zip":
                 return await offload(downloads.create_zip, names)
-            return await offload(lambda: [self.preview(visible.select_paths(names))])
+            return await offload(self.preview, names)
 
     def _register_mutation_tools(self) -> None:
         server, visible, sources, uploads = (

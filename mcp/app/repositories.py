@@ -227,7 +227,7 @@ class ImageRepository(Repository):
         )
         params = ([normalized_query] if normalized_query else []) + filters + [limit, offset]
         rows = self.fetch_all(
-            f"""SELECT name, caption, tags, updated_at,
+            f"""SELECT name, caption, tags, favorite, updated_at, public_url,
                        count(*) OVER() AS total_count, {rank_sql} AS rank
                 FROM image_metadata WHERE {' AND '.join(clauses)}
                 ORDER BY rank DESC, updated_at DESC, name LIMIT %s OFFSET %s""",
@@ -235,7 +235,10 @@ class ImageRepository(Repository):
         )
         count = rows[0]["total_count"] if rows else 0
         results = [
-            {key: row[key] for key in ("name", "caption", "tags", "updated_at")}
+            {
+                key: row[key]
+                for key in ("name", "caption", "tags", "favorite", "updated_at", "public_url")
+            }
             for row in rows
         ]
         return count, results

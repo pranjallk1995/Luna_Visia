@@ -4,18 +4,42 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from .config import AppConfig
 from .downloads import DownloadStore, DownloadTicket
-from .media import ImagePayloadDecoder
+from .media import ImagePayloadDecoder, PreviewRenderer
 from .models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
 from .repositories import ImageRepository, PublicURLRepository, Row
 from .storage import ImageStorage
 from .uploads import UploadLinkStore
 from .vision import OllamaVisionAnalyzer
+
+
+# The compact view of an image returned to LLM clients when listing or searching.
+SUMMARY_FIELDS = ("name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url")
+
+
+# A preview's text key only needs enough to identify, describe, and link each tile.
+PREVIEW_FIELDS = ("name", "caption", "public_url")
+
+
+def summarize(row: Row, fields: tuple[str, ...] = SUMMARY_FIELDS) -> Row:
+    return {key: row[key] for key in fields if key in row}
+
+
+def page(items: list[Row], total: int, limit: int, offset: int) -> dict[str, Any]:
+    """Wrap one page of results with the offset of the next page, if any."""
+    next_offset = offset + len(items)
+    return {
+        "count": total,
+        "offset": offset,
+        "next_offset": next_offset if next_offset < total else None,
+        "images": items,
+    }
 
 
 def unique_names(names: list[str], empty_message: str) -> list[str]:
@@ -265,6 +289,12 @@ class VisibleImageService(ImageCollectionService):
     def favorites(self) -> list[Row]:
         return self.images.list_favorites()
 
+    def list_page(self, limit: int, offset: int, max_limit: int) -> dict[str, Any]:
+        """Return one page of compact image summaries, newest first."""
+        rows = self.list()
+        limit, offset = min(max(limit, 1), max_limit), max(offset, 0)
+        return page([summarize(row) for row in rows[offset : offset + limit]], len(rows), limit, offset)
+
     def set_favorite(self, names: list[str], favorite: bool) -> dict[str, Any]:
         """Add visible images to Favorites or remove them."""
         clean_names = unique_names(names, "Select at least one image.")
@@ -316,6 +346,68 @@ class VisibleImageService(ImageCollectionService):
         if size >= 1024**3 and size % 1024**3 == 0:
             return f"{size // 1024**3} GiB"
         return f"{size / 1024**2:.0f} MiB"
+
+
+@dataclass(frozen=True)
+class PreviewResult:
+    """A rendered preview plus the text an LLM needs to describe and link it."""
+
+    jpeg: bytes
+    items: list[Row]
+    unavailable: list[str] = field(default_factory=list)
+
+    def summary(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "previewed": [
+                {"number": number, **summarize(item, PREVIEW_FIELDS)}
+                for number, item in enumerate(self.items, start=1)
+            ],
+        }
+        if len(self.items) > 1:
+            result["note"] = "Numbers match the labels on the contact sheet."
+        if self.unavailable:
+            result["unavailable"] = self.unavailable
+            result["unavailable_reason"] = "Not found, renamed, or not visible; re-run search_images."
+        return result
+
+
+class ImagePreviewService:
+    """Render chat previews of visible images, skipping names that cannot be shown.
+
+    A stale or hidden name is reported rather than failing the batch, and the
+    original files' combined size is not limited because only downscaled
+    copies are sent, decoded one image at a time.
+    """
+
+    def __init__(self, visible: VisibleImageService, renderer: PreviewRenderer, max_images: int) -> None:
+        self.visible = visible
+        self.renderer = renderer
+        self.max_images = max_images
+
+    def preview(self, names: list[str]) -> PreviewResult:
+        if isinstance(names, list) and any(not isinstance(name, str) for name in names):
+            raise ValueError("Every image name must be a string.")
+        clean_names = unique_names(names, "Provide at least one image name.")
+        if len(clean_names) > self.max_images:
+            raise ValueError(
+                f"Preview at most {self.max_images} images at a time; "
+                "use delivery='zip' to download more."
+            )
+        paths, items, unavailable = [], [], []
+        for name in clean_names:
+            try:
+                path, item = self.visible.path(name), self.visible.get(name)
+            except (FileNotFoundError, PermissionError, ValueError):
+                unavailable.append(name)
+                continue
+            paths.append(path)
+            items.append(item)
+        if not paths:
+            raise FileNotFoundError(
+                f"None of the requested images are available: {', '.join(unavailable)}. "
+                "Re-run search_images or list_images for current names."
+            )
+        return PreviewResult(self.renderer.render(paths), items, unavailable)
 
 
 class ImageDownloadService:
@@ -459,17 +551,16 @@ class SearchService:
         normalized_tags = self.rules.normalize_tags(tags) if tags else []
         if not normalized_query and not normalized_tags:
             raise ValueError("Provide a meaningful query or at least one tag.")
+        limit, offset = min(max(limit, 1), self.limit_max), max(offset, 0)
         count, results = self.images.search(
-            normalized_query,
-            normalized_tags,
-            match_all_tags,
-            min(max(limit, 1), self.limit_max),
-            max(offset, 0),
+            normalized_query, normalized_tags, match_all_tags, limit, offset
         )
+        next_offset = offset + len(results)
         return {
             "query": query,
             "normalized_query": normalized_query,
             "count": count,
+            "next_offset": next_offset if next_offset < count else None,
             "results": results,
         }
 
@@ -486,6 +577,7 @@ class VisiaService:
         urls: PublicURLService,
         downloads: ImageDownloadService,
         uploads: UploadLinkService,
+        previews: ImagePreviewService,
     ) -> None:
         self.visible = visible
         self.hidden = hidden
@@ -494,6 +586,7 @@ class VisiaService:
         self.urls = urls
         self.downloads = downloads
         self.uploads = uploads
+        self.previews = previews
 
     @classmethod
     def create(
@@ -537,5 +630,8 @@ class VisiaService:
             ),
             uploads=UploadLinkService(
                 visible, UploadLinkStore(config.upload_ttl_seconds), urls, config.max_image_bytes
+            ),
+            previews=ImagePreviewService(
+                visible, PreviewRenderer(config.display_max_edge), config.max_fetch_images
             ),
         )

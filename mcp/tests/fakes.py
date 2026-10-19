@@ -106,7 +106,10 @@ class FakeImageRepository:
     def search(self, query, tags, match_all, limit, offset):
         stem = query.rstrip("s")
         matches = [
-            {key: row[key] for key in ("name", "caption", "tags", "updated_at")}
+            {
+                key: row[key]
+                for key in ("name", "caption", "tags", "favorite", "updated_at", "public_url")
+            }
             for row in self.rows.values()
             if not row["hidden"]
             and (stem in row["caption"].lower() or any(stem in tag for tag in row["tags"]))

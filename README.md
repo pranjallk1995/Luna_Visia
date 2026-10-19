@@ -202,9 +202,9 @@ Luna Visia exposes these tools to connected MCP clients:
 
 ### Browse and retrieve
 
-- `list_images` - list visible images with captions and tags.
-- `view_image` - return a visible image.
-- `fetch_images` - display selected visible images in chat (up to 20 images / 50 MiB), or with `delivery="zip"` package up to 200 originals (2 GiB) and return a `download_url` on the public base URL that expires after 24 hours and survives service restarts (archives live on the `luna_visia_download_data` volume, capped at 10 GiB with oldest evicted first). The ZIP is never embedded in the tool result, which keeps large downloads within MCP message limits.
+- `list_images` - list visible images newest first, one page at a time (`limit`, default 50; follow `next_offset`), as compact summaries with each image's `public_url`. `include_preview=true` adds a numbered contact sheet of the first 20 images on the page.
+- `view_image` - show a preview of one visible image plus its caption and `public_url`.
+- `fetch_images` - display up to 20 visible images in chat as one preview or a numbered contact sheet (a near-square grid at most 1536 px wide, labeled with original filenames, transparency shown on a checkerboard), plus a text key with each tile's number, exact name, caption, and `public_url`; names that are no longer available are listed under `unavailable` instead of failing the request. Or with `delivery="zip"` package up to 200 originals (2 GiB) and return a `download_url` on the public base URL that expires after 24 hours and survives service restarts (archives live on the `luna_visia_download_data` volume, capped at 10 GiB with oldest evicted first). The ZIP is never embedded in the tool result, which keeps large downloads within MCP message limits.
 - `get_image_url` - return the stored public URL for one visible image when a base URL is configured.
 
 ### Add and modify images
@@ -220,7 +220,7 @@ Luna Visia exposes these tools to connected MCP clients:
 
 - `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
-- `search_images` - search filenames, captions, and tags without opening original images.
+- `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results.
 - `backfill_metadata` - generate missing or stale metadata for imported files.
 
 ### URL configuration

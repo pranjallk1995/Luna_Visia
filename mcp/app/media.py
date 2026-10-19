@@ -2,13 +2,14 @@
 
 import base64
 import binascii
+import math
 import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image as PillowImage
-from PIL import ImageDraw, ImageOps, UnidentifiedImageError
+from PIL import ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 
 
 class ImagePayloadDecoder:
@@ -94,31 +95,59 @@ class ImagePayloadDecoder:
         return f"{stem}{self.FORMAT_EXTENSIONS[detected]}"
 
 
-class PreviewRenderer:
-    """Render compact JPEG previews: one image, or a labeled contact sheet."""
+UPLOAD_PREFIX = re.compile(r"[0-9a-f]{32}_(?=.)", re.IGNORECASE)
 
-    SHEET_COLUMNS = 2
-    TILE_WIDTH = 512
-    TILE_IMAGE_HEIGHT = 384
-    TILE_LABEL_HEIGHT = 40
-    TILE_PADDING = 24
-    LABEL_MAX_CHARS = 58
+
+def display_name(stored_name: str) -> str:
+    """Drop the internal upload prefix (32 hex characters and ``_``) from a filename."""
+    return UPLOAD_PREFIX.sub("", stored_name, count=1)
+
+
+class PreviewRenderer:
+    """Render compact JPEG previews: one image, or a numbered contact sheet.
+
+    Sheets use a near-square grid capped at ``SHEET_WIDTH`` so chat clients do
+    not shrink them until labels become unreadable (a tall two-column strip of
+    20 images was 1024x4240 and displayed at under half size).
+    """
+
+    SHEET_WIDTH = 1536
+    MAX_COLUMNS = 5
+    TILE_ASPECT = 0.75
+    TILE_PADDING = 12
     SHEET_BACKGROUND = "#111827"
+    LABEL_COLOR = "#f5f5f5"
+    # Mid-grey checks keep both white and black artwork visible behind transparency.
+    CHECKER_COLORS = ("#8c8c8c", "#a6a6a6")
+    CHECKER_SIZE = 12
 
     def __init__(self, max_edge: int) -> None:
         self.max_edge = max_edge
 
-    @staticmethod
-    def _load(path: Path, max_size: tuple[int, int]) -> PillowImage.Image:
+    @classmethod
+    def _checkerboard(cls, size: tuple[int, int]) -> PillowImage.Image:
+        board = PillowImage.new("RGB", size, cls.CHECKER_COLORS[0])
+        draw = ImageDraw.Draw(board)
+        step = cls.CHECKER_SIZE
+        for top in range(0, size[1], step):
+            for left in range((top // step % 2) * step, size[0], 2 * step):
+                draw.rectangle((left, top, left + step - 1, top + step - 1), fill=cls.CHECKER_COLORS[1])
+        return board
+
+    @classmethod
+    def _load(cls, path: Path, max_size: tuple[int, int]) -> PillowImage.Image:
         """Load one image with corrected orientation and a bounded RGB canvas."""
         with PillowImage.open(path) as source:
+            source.draft("RGB", max_size)
             image = ImageOps.exif_transpose(source)
             image.thumbnail(max_size, PillowImage.Resampling.LANCZOS)
-            if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
+            if image.mode in {"RGBA", "LA", "P"} or "transparency" in image.info:
                 rgba = image.convert("RGBA")
-                flattened = PillowImage.new("RGB", rgba.size, "white")
-                flattened.paste(rgba, mask=rgba.getchannel("A"))
-                return flattened
+                if rgba.getchannel("A").getextrema()[0] < 255:
+                    flattened = cls._checkerboard(rgba.size)
+                    flattened.paste(rgba, mask=rgba.getchannel("A"))
+                    return flattened
+                return rgba.convert("RGB")
             return image.convert("RGB")
 
     @staticmethod
@@ -127,32 +156,55 @@ class PreviewRenderer:
         image.save(output, format="JPEG", quality=82, optimize=True)
         return output.getvalue()
 
-    def _label(self, name: str) -> str:
-        limit = self.LABEL_MAX_CHARS
-        return name if len(name) <= limit else f"{name[: limit - 3]}..."
+    @classmethod
+    def columns_for(cls, count: int) -> int:
+        return max(2, min(cls.MAX_COLUMNS, math.ceil(math.sqrt(count))))
 
-    def render(self, paths: list[Path]) -> bytes:
-        """Return JPEG bytes for one preview, or one sheet for several images."""
+    @staticmethod
+    def _fit(draw: ImageDraw.ImageDraw, text: str, font, width: int) -> str:
+        """Truncate ``text`` with an ellipsis so it fits ``width`` pixels."""
+        if draw.textlength(text, font=font) <= width:
+            return text
+        while text and draw.textlength(f"{text}…", font=font) > width:
+            text = text[:-1]
+        return f"{text}…"
+
+    def render(self, paths: list[Path], labels: list[str] | None = None) -> bytes:
+        """Return JPEG bytes for one preview, or one sheet for several images.
+
+        Sheet tiles are numbered from 1 and labeled with ``labels`` (default:
+        display names), so they can be matched to an accompanying text list.
+        """
         if len(paths) == 1:
             return self._jpeg(self._load(paths[0], (self.max_edge, self.max_edge)))
 
-        columns, width = self.SHEET_COLUMNS, self.TILE_WIDTH
-        image_height, row_height = self.TILE_IMAGE_HEIGHT, self.TILE_IMAGE_HEIGHT + self.TILE_LABEL_HEIGHT
-        rows = (len(paths) + columns - 1) // columns
-        sheet = PillowImage.new("RGB", (columns * width, rows * row_height), self.SHEET_BACKGROUND)
+        labels = labels or [display_name(path.name) for path in paths]
+        columns = self.columns_for(len(paths))
+        tile_width = self.SHEET_WIDTH // columns
+        image_height = int(tile_width * self.TILE_ASPECT)
+        font = ImageFont.load_default(size=max(14, tile_width // 18))
+        label_height = int(font.size * 1.9)
+        row_height = image_height + label_height
+        rows = math.ceil(len(paths) / columns)
+        sheet = PillowImage.new(
+            "RGB", (columns * tile_width, rows * row_height), self.SHEET_BACKGROUND
+        )
         draw = ImageDraw.Draw(sheet)
-        for index, path in enumerate(paths):
-            image = self._load(
-                path, (width - self.TILE_PADDING, image_height - self.TILE_PADDING)
-            )
+        inner = (tile_width - 2 * self.TILE_PADDING, image_height - 2 * self.TILE_PADDING)
+        for index, (path, label) in enumerate(zip(paths, labels)):
             column, row = index % columns, index // columns
-            left = column * width + (width - image.width) // 2
-            top = row * row_height + (image_height - image.height) // 2
-            sheet.paste(image, (left, top))
+            left, top = column * tile_width, row * row_height
+            image = self._load(path, inner)
+            sheet.paste(
+                image,
+                (left + (tile_width - image.width) // 2, top + (image_height - image.height) // 2),
+            )
+            text = self._fit(draw, f"{index + 1}. {label}", font, inner[0])
             draw.text(
-                (column * width + 12, row * row_height + image_height + 10),
-                self._label(path.name),
-                fill="white",
+                (left + self.TILE_PADDING, top + image_height + (label_height - font.size) // 2),
+                text,
+                fill=self.LABEL_COLOR,
+                font=font,
             )
         return self._jpeg(sheet)
 
@@ -164,12 +216,10 @@ class ImageArchive:
     compressed, so deflating only costs CPU and can grow the archive.
     """
 
-    UPLOAD_PREFIX = re.compile(r"[0-9a-f]{32}_(?=.)", re.IGNORECASE)
-
-    @classmethod
-    def entry_name(cls, stored_name: str) -> str:
+    @staticmethod
+    def entry_name(stored_name: str) -> str:
         """Drop the internal upload prefix so entries keep their original names."""
-        return cls.UPLOAD_PREFIX.sub("", stored_name, count=1)
+        return display_name(stored_name)
 
     @classmethod
     def entry_names(cls, paths: list[Path]) -> list[str]:

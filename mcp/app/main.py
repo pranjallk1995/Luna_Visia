@@ -8,7 +8,6 @@ from .config import AppConfig
 from .database import Database
 from .http_routes import VisiaHTTPRoutes
 from .mcp_tools import VisiaMCPTools
-from .media import PreviewRenderer
 from .models import MetadataRules
 from .remote import ImageSourceResolver
 from .repositories import CredentialRepository, ImageRepository, PublicURLRepository
@@ -49,7 +48,6 @@ class LunaVisiaApplication:
             ImageSourceResolver(
                 self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
             ),
-            PreviewRenderer(config.display_max_edge),
         )
         VisiaHTTPRoutes(self.mcp, self.service, self.auth, self.branding)
 
