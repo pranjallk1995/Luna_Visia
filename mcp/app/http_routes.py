@@ -177,11 +177,11 @@ class VisiaHTTPRoutes:
 
         async def download(request: Request):
             try:
-                ticket = downloads.archive(request.path_params["token"])
+                ticket, path = downloads.archive(request.path_params["token"])
             except FileNotFoundError as error:
                 return JSONResponse({"error": str(error)}, status_code=404)
             return FileResponse(
-                ticket.path,
+                path,
                 media_type="application/zip",
                 filename=ticket.file_name,
                 headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},

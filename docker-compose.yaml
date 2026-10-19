@@ -82,6 +82,7 @@ services:
       - "127.0.0.1:18000:8000"
     volumes:
       - image_data:/data/images
+      - download_data:/data/downloads
     develop:
       watch:
         - action: sync+restart
@@ -155,6 +156,8 @@ volumes:
     name: luna_visia_postgres_data
   image_data:
     name: luna_visia_image_data
+  download_data:
+    name: luna_visia_download_data
   ollama_data:
 
 networks:

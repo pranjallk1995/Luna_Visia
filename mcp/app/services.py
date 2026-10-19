@@ -356,9 +356,9 @@ class ImageDownloadService:
             "names": [path.name for path in paths],
         }
 
-    def archive(self, token: str) -> DownloadTicket:
-        """Return the live archive ticket for a download token."""
-        return self.store.resolve(token)
+    def archive(self, token: str) -> tuple[DownloadTicket, Path]:
+        """Return the live ticket and archive file for a download token."""
+        return self.store.resolve(token), self.store.archive_path(token)
 
 
 class UploadLinkService:
@@ -526,7 +526,11 @@ class VisiaService:
             urls=urls,
             downloads=ImageDownloadService(
                 visible,
-                DownloadStore(config.download_dir, config.download_ttl_seconds),
+                DownloadStore(
+                    config.download_dir,
+                    config.download_ttl_seconds,
+                    config.max_download_store_bytes,
+                ),
                 urls,
                 config.max_archive_images,
                 config.max_archive_bytes,

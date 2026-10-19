@@ -148,7 +148,7 @@ class VisiaMCPTools:
               images, 50 MiB of originals).
             - zip: packages the original files on the server and returns a
               download_url (at most 200 images, 2 GiB). Give the user that link
-              exactly as returned; it expires at expires_at (30 minutes) and the
+              exactly as returned; it expires at expires_at (24 hours) and the
               ZIP is not embedded in this result.
             Hidden images are never available through this public tool.
             """

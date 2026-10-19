@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -25,6 +26,7 @@ from fakes import (
 
 from app.branding import ServerBranding
 from app.config import AppConfig
+from app.downloads import DownloadStore
 from app.http_routes import TOKEN_HEADER, VisiaHTTPRoutes
 from app.mcp_tools import VisiaMCPTools
 from app.media import ImageArchive, PreviewRenderer
@@ -328,12 +330,48 @@ class DownloadRouteTests(ServerTestCase):
         remaining = [path.stem for path in Path(self.downloads_temp.name).glob("*.zip")]
         self.assertEqual(remaining, [live["download_url"].rsplit("/", 1)[-1]])
 
-    def test_restart_discards_orphaned_archives(self) -> None:
-        self.create_zip(["one.png"])
-        from app.downloads import DownloadStore
+    def store_dir(self) -> Path:
+        return Path(self.downloads_temp.name)
 
-        DownloadStore(Path(self.downloads_temp.name), 60)
-        self.assertEqual(list(Path(self.downloads_temp.name).glob("*.zip")), [])
+    def test_link_survives_restart(self) -> None:
+        result = self.create_zip(["one.png", "two.png"])
+        # A new store over the same directory models a service restart.
+        self.service.downloads.store = DownloadStore(self.store_dir(), 3600, 10**9)
+        with self.client() as client:
+            response = client.get(self.path_of(result["download_url"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.content), result["size_bytes"])
+
+    def test_store_evicts_oldest_archives_over_size_cap(self) -> None:
+        first = self.create_zip(["one.png"])
+        size = first["size_bytes"]
+        self.service.downloads.store.max_total_bytes = size + 1
+        second = self.create_zip(["two.png"])
+        with self.client() as client:
+            self.assertEqual(client.get(self.path_of(first["download_url"])).status_code, 404)
+            self.assertEqual(client.get(self.path_of(second["download_url"])).status_code, 200)
+
+    def test_incomplete_archive_without_ticket_is_not_served(self) -> None:
+        token = "A" * 43
+        (self.store_dir() / f"{token}.zip").write_bytes(b"partial")
+        with self.client() as client:
+            self.assertEqual(client.get(f"/api/downloads/{token}").status_code, 404)
+
+    def test_malformed_tokens_cannot_reach_other_files(self) -> None:
+        with self.client() as client:
+            for token in ("..%2F..%2Fetc%2Fpasswd", "short", "A" * 42 + "."):
+                self.assertEqual(client.get(f"/api/downloads/{token}").status_code, 404)
+
+    def test_abandoned_leftovers_are_purged_after_grace(self) -> None:
+        store = self.service.downloads.store
+        leftover = self.store_dir() / f"{'B' * 43}.zip"
+        leftover.write_bytes(b"orphan")
+        store.purge()
+        self.assertTrue(leftover.exists())
+        old = time.time() - store.LEFTOVER_GRACE_SECONDS - 1
+        os.utime(leftover, (old, old))
+        store.purge()
+        self.assertFalse(leftover.exists())
 
 
 class HTTPRouteTests(ServerTestCase):

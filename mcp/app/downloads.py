@@ -1,9 +1,10 @@
-"""Short-lived ZIP archives served through unguessable download links."""
+"""ZIP archives served through unguessable, restart-safe download links."""
 
+import json
+import re
 import secrets
-import threading
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,7 +16,6 @@ class DownloadTicket:
     """One prepared archive and the capability token that unlocks it."""
 
     token: str
-    path: Path
     file_name: str
     image_count: int
     size_bytes: int
@@ -27,59 +27,100 @@ class DownloadTicket:
 
 
 class DownloadStore:
-    """Write archives to a private directory and expire them after a TTL.
+    """Keep archives and their tickets on disk so links survive restarts.
 
-    Tickets live in memory, so a restart invalidates outstanding links; the
-    store's ``*.zip`` files are removed on start to drop archives orphaned by
-    that restart.
+    Each archive ``<token>.zip`` has a ``<token>.json`` sidecar holding its
+    ticket. The sidecar is written last and atomically, so a link only exists
+    once its archive is complete. Expired archives are purged, and the oldest
+    are evicted when the store exceeds ``max_total_bytes``.
     """
 
     FILE_NAME = "luna-visia-images.zip"
+    TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
+    NOT_FOUND_MESSAGE = "This download link has expired or does not exist."
+    # Leftovers without a ticket are only removed once clearly abandoned, so a
+    # concurrent purge never deletes an archive whose ticket is being written.
+    LEFTOVER_GRACE_SECONDS = 60 * 60
 
-    def __init__(self, directory: Path, ttl_seconds: int) -> None:
+    def __init__(self, directory: Path, ttl_seconds: int, max_total_bytes: int) -> None:
         self.directory = directory
         self.ttl_seconds = ttl_seconds
-        self._tickets: dict[str, DownloadTicket] = {}
-        self._lock = threading.Lock()
+        self.max_total_bytes = max_total_bytes
         self.directory.mkdir(parents=True, exist_ok=True)
-        for orphan in self.directory.glob("*.zip"):
-            orphan.unlink(missing_ok=True)
+        self.purge()
+
+    def archive_path(self, token: str) -> Path:
+        return self.directory / f"{token}.zip"
+
+    def _ticket_path(self, token: str) -> Path:
+        return self.directory / f"{token}.json"
 
     def create(self, paths: list[Path]) -> DownloadTicket:
         """Archive ``paths`` and return a ticket valid for the TTL."""
-        self.purge_expired()
+        self.purge()
         token = secrets.token_urlsafe(32)
-        destination = self.directory / f"{token}.zip"
+        archive = self.archive_path(token)
+        partial = archive.with_suffix(".zip.part")
         try:
-            ImageArchive.write(paths, destination)
+            ImageArchive.write(paths, partial)
+            partial.replace(archive)
+            ticket = DownloadTicket(
+                token=token,
+                file_name=self.FILE_NAME,
+                image_count=len(paths),
+                size_bytes=archive.stat().st_size,
+                expires_at=time.time() + self.ttl_seconds,
+            )
+            sidecar = self._ticket_path(token).with_suffix(".json.part")
+            sidecar.write_text(json.dumps(asdict(ticket)))
+            sidecar.replace(self._ticket_path(token))
         except BaseException:
-            destination.unlink(missing_ok=True)
+            for path in (partial, archive, self._ticket_path(token).with_suffix(".json.part")):
+                path.unlink(missing_ok=True)
             raise
-        ticket = DownloadTicket(
-            token=token,
-            path=destination,
-            file_name=self.FILE_NAME,
-            image_count=len(paths),
-            size_bytes=destination.stat().st_size,
-            expires_at=time.time() + self.ttl_seconds,
-        )
-        with self._lock:
-            self._tickets[token] = ticket
+        self.purge(keep=token)
         return ticket
 
     def resolve(self, token: str) -> DownloadTicket:
         """Return a live ticket or raise ``FileNotFoundError``."""
-        with self._lock:
-            ticket = self._tickets.get(token)
-        if ticket is None or ticket.expires_at <= time.time() or not ticket.path.is_file():
-            self.purge_expired()
-            raise FileNotFoundError("This download link has expired or does not exist.")
+        ticket = self._load(token) if self.TOKEN_PATTERN.fullmatch(token) else None
+        if ticket is None or ticket.expires_at <= time.time() or not self.archive_path(token).is_file():
+            raise FileNotFoundError(self.NOT_FOUND_MESSAGE)
         return ticket
 
-    def purge_expired(self) -> None:
+    def _load(self, token: str) -> DownloadTicket | None:
+        try:
+            return DownloadTicket(**json.loads(self._ticket_path(token).read_text()))
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _remove(self, token: str) -> None:
+        self._ticket_path(token).unlink(missing_ok=True)
+        self.archive_path(token).unlink(missing_ok=True)
+
+    def purge(self, keep: str | None = None) -> None:
+        """Drop expired or incomplete archives, then evict the oldest over the cap."""
         now = time.time()
-        with self._lock:
-            expired = [token for token, ticket in self._tickets.items() if ticket.expires_at <= now]
-            tickets = [self._tickets.pop(token) for token in expired]
-        for ticket in tickets:
-            ticket.path.unlink(missing_ok=True)
+        live: list[DownloadTicket] = []
+        for sidecar in self.directory.glob("*.json"):
+            ticket = self._load(sidecar.stem)
+            if ticket is None or ticket.expires_at <= now or not self.archive_path(sidecar.stem).is_file():
+                self._remove(sidecar.stem)
+            else:
+                live.append(ticket)
+        tokens = {ticket.token for ticket in live}
+        cutoff = now - self.LEFTOVER_GRACE_SECONDS
+        leftovers = [path for path in self.directory.glob("*.zip") if path.stem not in tokens]
+        for path in [*leftovers, *self.directory.glob("*.part")]:
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+            except FileNotFoundError:
+                continue
+        total = sum(ticket.size_bytes for ticket in live)
+        for ticket in sorted(live, key=lambda ticket: ticket.expires_at):
+            if total <= self.max_total_bytes:
+                break
+            if ticket.token != keep:
+                self._remove(ticket.token)
+                total -= ticket.size_bytes

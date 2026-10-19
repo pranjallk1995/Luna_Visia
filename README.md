@@ -204,7 +204,7 @@ Luna Visia exposes these tools to connected MCP clients:
 
 - `list_images` - list visible images with captions and tags.
 - `view_image` - return a visible image.
-- `fetch_images` - display selected visible images in chat (up to 20 images / 50 MiB), or with `delivery="zip"` package up to 200 originals (2 GiB) and return a `download_url` on the public base URL that expires after 30 minutes. The ZIP is never embedded in the tool result, which keeps large downloads within MCP message limits.
+- `fetch_images` - display selected visible images in chat (up to 20 images / 50 MiB), or with `delivery="zip"` package up to 200 originals (2 GiB) and return a `download_url` on the public base URL that expires after 24 hours and survives service restarts (archives live on the `luna_visia_download_data` volume, capped at 10 GiB with oldest evicted first). The ZIP is never embedded in the tool result, which keeps large downloads within MCP message limits.
 - `get_image_url` - return the stored public URL for one visible image when a base URL is configured.
 
 ### Add and modify images

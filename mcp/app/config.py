@@ -1,7 +1,6 @@
 """Validated runtime configuration for the Luna Visia backend."""
 
 import os
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
@@ -34,9 +33,11 @@ class AppConfig:
     # ZIPs are served as download links, so they are not bound by MCP message size.
     max_archive_images: int = 200
     max_archive_bytes: int = 2 * 1024 * 1024 * 1024
-    download_ttl_seconds: int = 30 * 60
+    download_ttl_seconds: int = 24 * 60 * 60
+    max_download_store_bytes: int = 10 * 1024 * 1024 * 1024
     upload_ttl_seconds: int = 15 * 60
-    download_dir: Path = Path(tempfile.gettempdir()) / "luna-visia-downloads"
+    # A persistent volume, so download links keep working across restarts.
+    download_dir: Path = Path("/data/downloads")
     display_max_edge: int = 768
     max_tags: int = 32
     search_limit_max: int = 100
