@@ -127,6 +127,15 @@ class ImageRepository(Repository):
             raise FileNotFoundError(f"Image {name!r} was not found.")
         return bool(row["hidden"])
 
+    def find_visible_by_content(self, content_sha256: str) -> Row | None:
+        """Return the newest visible image with identical bytes, if any."""
+        return self.fetch_one(
+            f"""SELECT {self.COLUMNS} FROM image_metadata
+                WHERE content_sha256 = %s AND hidden = false
+                ORDER BY updated_at DESC, name LIMIT 1""",
+            (content_sha256,),
+        )
+
     def name_for_image_id(self, image_id: str) -> str | None:
         """Resolve an immutable public identifier to its current filename."""
         row = self.fetch_one(

@@ -1,13 +1,61 @@
 """MCP tools that let LLM clients manage Luna Visia images."""
 
-from typing import Any, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal, TypeVar
 
+import anyio
 from mcp.server.fastmcp import FastMCP, Image as MCPImage
+from pydantic import BaseModel, ConfigDict, WithJsonSchema
 
 from .media import PreviewRenderer
 from .models import MetadataChange
 from .remote import ImageSourceResolver
 from .services import VisiaService
+
+Result = TypeVar("Result")
+
+# ChatGPT passes attachments to parameters listed here as {download_url, file_id}.
+FILE_PARAMS_META = {"openai/fileParams": ["file"]}
+
+
+class FileReference(BaseModel):
+    """A client-hosted attachment, as passed by ChatGPT for file parameters."""
+
+    model_config = ConfigDict(extra="allow")
+
+    download_url: str
+    file_id: str | None = None
+
+
+# Inline (no $ref) so every LLM client can read the parameter shape.
+FileInput = Annotated[
+    FileReference | None,
+    WithJsonSchema(
+        {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "download_url": {"type": "string"},
+                        "file_id": {"type": "string"},
+                    },
+                    "required": ["download_url"],
+                },
+                {"type": "null"},
+            ],
+            "description": "An attached image file passed by the chat client.",
+        }
+    ),
+]
+
+
+async def offload(function: Callable[..., Result], *args: Any) -> Result:
+    """Run slow, blocking work (vision analysis, archives) off the event loop.
+
+    FastMCP calls synchronous tools on the event loop, so a blocking tool would
+    stall every other request, including the web UI and health checks.
+    """
+    return await anyio.to_thread.run_sync(function, *args)
 
 
 class VisiaMCPTools:
@@ -59,9 +107,9 @@ class VisiaMCPTools:
             return search.search(query, tags, match_all_tags, limit, offset)
 
         @server.tool()
-        def backfill_metadata() -> dict[str, Any]:
+        async def backfill_metadata() -> dict[str, Any]:
             """Analyze files missing current metadata; idempotent by hash/model."""
-            return indexer.backfill()
+            return await offload(indexer.backfill)
 
     def _register_delivery_tools(self) -> None:
         server, visible, urls, downloads = (
@@ -92,7 +140,7 @@ class VisiaMCPTools:
             return urls.update(public_base_url)
 
         @server.tool()
-        def fetch_images(names: list[str], delivery: Literal["display", "zip"] = "display"):
+        async def fetch_images(names: list[str], delivery: Literal["display", "zip"] = "display"):
             """Fetch visible images for chat display or as a downloadable ZIP.
 
             Use exact filenames returned by list_images or search_images.
@@ -105,41 +153,78 @@ class VisiaMCPTools:
             Hidden images are never available through this public tool.
             """
             if delivery == "zip":
-                return downloads.create_zip(names)
-            return [self.preview(visible.select_paths(names))]
+                return await offload(downloads.create_zip, names)
+            return await offload(lambda: [self.preview(visible.select_paths(names))])
 
     def _register_mutation_tools(self) -> None:
-        server, visible, sources = self.server, self.service.visible, self.sources
+        server, visible, sources, uploads = (
+            self.server,
+            self.service.visible,
+            self.sources,
+            self.service.uploads,
+        )
+
+        def upload(name: str | None, base64_data=None, image_url=None, file=None) -> dict[str, Any]:
+            source = sources.resolve(base64_data, image_url, file.model_dump() if file else None)
+            return visible.upload(name or source.suggested_name, source.data)
+
+        @server.tool(meta=FILE_PARAMS_META)
+        async def upload_image(
+            name: str | None = None,
+            file: FileInput = None,
+            image_url: str | None = None,
+            content_base64: str | None = None,
+        ) -> dict[str, Any]:
+            """Add an image to Luna Visia; it is analyzed for a caption and tags.
+
+            Provide exactly one source:
+            - file: an image the user attached in chat (ChatGPT supplies it).
+            - image_url: a public HTTPS image URL or an image data URL.
+            - content_base64: Base64 image bytes; only practical for small images.
+            To upload a local file from a shell or code sandbox, use
+            create_upload_link instead of Base64.
+
+            name is optional. The extension is corrected to match the image
+            format, a taken name gets a numeric suffix, and an exact duplicate of a
+            stored image returns status "duplicate" instead of a second copy.
+            Maximum image size: 50 MiB.
+            """
+            return await offload(upload, name, content_base64, image_url, file)
 
         @server.tool()
-        def add_image(name: str, content_base64: str) -> dict[str, Any]:
-            """Analyze and add an image, persisting its caption and tags."""
-            return {"status": "created", **visible.ingest(name, content_base64, replace=False)}
+        async def add_image(name: str, content_base64: str) -> dict[str, Any]:
+            """Add a small image from Base64. Prefer upload_image for attachments and URLs."""
+            return await offload(upload, name, content_base64)
 
         @server.tool()
-        def upload_image(
+        def create_upload_link(name: str, replace: bool = False) -> dict[str, Any]:
+            """Create a single-use HTTPS link for uploading a local image file.
+
+            Use this when you can run commands (a shell or code sandbox) and have
+            the image as a file: POST its bytes to upload_url, for example with the
+            returned curl_example. The link expires after 15 minutes. With
+            replace=true, name must be an existing visible image to overwrite.
+            """
+            return uploads.create_link(name, replace)
+
+        @server.tool(meta=FILE_PARAMS_META)
+        async def modify_image(
             name: str,
             content_base64: str | None = None,
             image_url: str | None = None,
+            file: FileInput = None,
         ) -> dict[str, Any]:
-            """Upload an image from a ChatGPT attachment, Base64, or HTTPS URL.
+            """Analyze and atomically replace a non-hidden image and its metadata.
 
-            Provide exactly one of:
-            - content_base64: Base64-encoded image data
-            - image_url: Public HTTPS image URL or data URL
-
-            ChatGPT attachment paths may be converted to temporary
-            HTTPS URLs by the tool infrastructure.
-
-            Maximum image size: 50 MiB.
+            Provide exactly one of file, image_url, or content_base64; the new image
+            must have the same format as the existing file's extension.
             """
-            content = sources.resolve(content_base64, image_url)
-            return {"status": "created", **visible.ingest(name, content, replace=False)}
 
-        @server.tool()
-        def modify_image(name: str, content_base64: str) -> dict[str, Any]:
-            """Analyze and atomically replace a non-hidden image and its metadata."""
-            return {"status": "modified", **visible.ingest(name, content_base64, replace=True)}
+            def replace() -> dict[str, Any]:
+                source = sources.resolve(content_base64, image_url, file.model_dump() if file else None)
+                return {"status": "modified", **visible.ingest_bytes(name, source.data, replace=True)}
+
+            return await offload(replace)
 
         @server.tool()
         def update_image_metadata(

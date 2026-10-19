@@ -29,6 +29,15 @@ class ImageStorage:
             raise ValueError("Image path must remain inside the vault directory.")
         return path
 
+    def available_name(self, name: str) -> str:
+        """Return ``name``, or ``stem_2.ext``, ``stem_3.ext``... if it is taken."""
+        stem, suffix = Path(name).stem, Path(name).suffix
+        candidate, counter = name, 2
+        while self.path(candidate).exists():
+            candidate = f"{stem}_{counter}{suffix}"
+            counter += 1
+        return candidate
+
     def existing_path(self, name: str) -> Path:
         """Resolve ``name`` and require that the file exists."""
         path = self.path(name)

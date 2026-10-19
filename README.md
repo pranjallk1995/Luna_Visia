@@ -209,9 +209,10 @@ Luna Visia exposes these tools to connected MCP clients:
 
 ### Add and modify images
 
-- `add_image` - programmatically add Base64 image data and generate metadata.
-- `upload_image` - upload a file attached to the user's ChatGPT message through ChatGPT's native file parameter, then generate metadata.
-- `modify_image` - replace a visible image and refresh its metadata.
+- `upload_image` - add an image from exactly one source: `file` (a chat attachment; declared through ChatGPT's `openai/fileParams`), `image_url` (public HTTPS or data URL), or `content_base64` (small images only; wrapped, unpadded, URL-safe, and data-URL Base64 are accepted). `name` is optional: the extension is corrected to the detected format, taken names get a `_2` suffix, and an exact duplicate of a visible image returns `status: "duplicate"` instead of a second copy.
+- `create_upload_link` - return a single-use HTTPS link (15 minutes) that accepts a raw or multipart (`file`) POST. Use it from agents with a shell or code sandbox, since LLMs cannot emit megabytes of Base64.
+- `add_image` - add a small image from Base64 (same handling as `upload_image`).
+- `modify_image` - replace a visible image from `file`, `image_url`, or `content_base64` and refresh its metadata.
 - `rename_image` - safely rename a visible image file and its metadata without re-running vision analysis; its immutable image ID and public URL remain unchanged.
 - `remove_image` - delete a visible image and its metadata.
 
@@ -356,7 +357,8 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/app/storage.py` - `ImageStorage`, safe vault paths plus write, rename, and delete operations that roll back if metadata persistence fails.
 - `mcp/app/media.py` - upload byte validation, chat previews and contact sheets, and `ImageArchive` (uncompressed ZIPs with original filenames).
 - `mcp/app/downloads.py` - `DownloadStore`, short-lived ZIP archives behind unguessable `/api/downloads/{token}` links.
-- `mcp/app/remote.py` - `ImageSourceResolver` for Base64, data-URL, and SSRF-guarded HTTPS upload sources.
+- `mcp/app/remote.py` - `ImageSourceResolver` for chat file references, Base64, data URLs, and SSRF-guarded HTTPS upload sources.
+- `mcp/app/uploads.py` - `UploadLinkStore`, single-use upload tickets behind `/api/uploads/{token}`.
 - `mcp/app/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
 - `mcp/app/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
 - `mcp/app/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.

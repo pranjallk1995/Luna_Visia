@@ -35,6 +35,7 @@ class AppConfig:
     max_archive_images: int = 200
     max_archive_bytes: int = 2 * 1024 * 1024 * 1024
     download_ttl_seconds: int = 30 * 60
+    upload_ttl_seconds: int = 15 * 60
     download_dir: Path = Path(tempfile.gettempdir()) / "luna-visia-downloads"
     display_max_edge: int = 768
     max_tags: int = 32

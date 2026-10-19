@@ -12,7 +12,16 @@ from PIL import ImageDraw, ImageOps, UnidentifiedImageError
 
 
 class ImagePayloadDecoder:
-    """Decode bounded Base64 payloads and verify bytes match the filename."""
+    """Decode image payloads, detect their real format, and check filenames.
+
+    Base64 from LLM clients is often line-wrapped, unpadded, URL-safe, or a
+    ``data:`` URL, so all of those are normalized before decoding.
+    """
+
+    FORMAT_EXTENSIONS = {"GIF": ".gif", "JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+    # Phone cameras write multi-picture JPEGs, which Pillow reports as MPO.
+    FORMAT_ALIASES = {"MPO": "JPEG"}
+    DEFAULT_STEM = "image"
 
     def __init__(self, allowed_formats: dict[str, str], max_image_bytes: int) -> None:
         self.allowed_formats = allowed_formats
@@ -23,13 +32,25 @@ class ImagePayloadDecoder:
         """Return the largest Base64 payload allowed for the byte limit."""
         return 4 * ((self.max_image_bytes + 2) // 3)
 
-    def decode(self, name: str, content_base64: str) -> bytes:
-        if len(content_base64) > self.max_base64_chars:
+    def decode_base64(self, payload: str) -> bytes:
+        """Decode standard, URL-safe, wrapped, unpadded, or data-URL Base64."""
+        text = payload.strip()
+        if text[:5].casefold() == "data:":
+            header, separator, text = text.partition(",")
+            if not separator or not header.casefold().endswith(";base64"):
+                raise ValueError("Image data URLs must contain Base64-encoded data.")
+        text = re.sub(r"\s+", "", text)
+        if len(text) > self.max_base64_chars:
             raise ValueError("Image content exceeds the 50 MiB limit.")
+        text = text.replace("-", "+").replace("_", "/")
+        text += "=" * (-len(text) % 4)
         try:
-            data = base64.b64decode(content_base64, validate=True)
+            return base64.b64decode(text, validate=True)
         except (binascii.Error, ValueError) as error:
             raise ValueError("content_base64 must be valid base64 data.") from error
+
+    def detect_format(self, data: bytes) -> str:
+        """Return the Pillow format of valid, bounded, supported image bytes."""
         if not data or len(data) > self.max_image_bytes:
             raise ValueError("Image content is empty or exceeds the 50 MiB limit.")
         try:
@@ -37,11 +58,40 @@ class ImagePayloadDecoder:
                 detected = image.format
                 image.verify()
         except (UnidentifiedImageError, OSError) as error:
-            raise ValueError("Decoded content is not a valid image.") from error
+            raise ValueError("Content is not a valid image.") from error
+        detected = self.FORMAT_ALIASES.get(detected, detected)
+        if detected not in self.FORMAT_EXTENSIONS:
+            supported = ", ".join(self.FORMAT_EXTENSIONS)
+            raise ValueError(f"{detected} images are not supported; use {supported}.")
+        return detected
+
+    def validate(self, name: str, data: bytes) -> bytes:
+        """Require ``data`` to be an image whose format matches ``name``."""
+        detected = self.detect_format(data)
         expected = self.allowed_formats[Path(name).suffix.lower()]
         if detected != expected:
             raise ValueError(f"Image content is {detected}, filename expects {expected}.")
         return data
+
+    def decode(self, name: str, content_base64: str) -> bytes:
+        return self.validate(name, self.decode_base64(content_base64))
+
+    def name_for(self, requested: str | None, detected: str) -> str:
+        """Turn a requested name into a plain filename whose extension matches.
+
+        Directories are dropped, and a missing or wrong extension is replaced
+        with the detected format's (``photo.png`` holding JPEG -> ``photo.jpg``).
+        """
+        name = Path((requested or "").strip().replace("\\", "/")).name
+        stem, suffix = Path(name).stem, Path(name).suffix.lower()
+        if suffix not in self.allowed_formats:
+            stem = name
+        stem = stem.strip().lstrip(".")
+        if not stem:
+            stem = self.DEFAULT_STEM
+        if suffix in self.allowed_formats and self.allowed_formats[suffix] == detected:
+            return f"{stem}{Path(name).suffix}"
+        return f"{stem}{self.FORMAT_EXTENSIONS[detected]}"
 
 
 class PreviewRenderer:

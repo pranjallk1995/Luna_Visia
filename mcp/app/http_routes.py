@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
@@ -11,6 +12,7 @@ from .branding import ServerBranding
 from .models import MetadataChange
 from .security import HiddenVaultAuth
 from .services import VisiaService
+from .uploads import UploadLinkNotFound
 
 Handler = Callable[[Request], Awaitable[Any]]
 TOKEN_HEADER = "X-Hidden-Vault-Token"
@@ -101,6 +103,7 @@ class VisiaHTTPRoutes:
         self._register_images()
         self._register_favorites()
         self._register_downloads()
+        self._register_uploads()
         self._register_hidden_access()
         self._register_hidden_images()
 
@@ -143,7 +146,9 @@ class VisiaHTTPRoutes:
 
         async def upload(request: Request):
             payload = await self.payload(request)
-            created = visible.ingest(payload["name"], payload["content_base64"], replace=False)
+            created = await anyio.to_thread.run_sync(
+                visible.ingest, payload["name"], payload["content_base64"]
+            )
             return {"status": "created", **created}
 
         async def delete(request: Request):
@@ -183,6 +188,40 @@ class VisiaHTTPRoutes:
             )
 
         self.route("GET", "/api/downloads/{token}", download)
+
+    @staticmethod
+    async def read_upload(request: Request, max_bytes: int) -> tuple[bytes, str | None]:
+        """Read a raw or multipart (field ``file``) upload body, enforcing ``max_bytes``."""
+        too_large = ValueError(f"Upload exceeds the {max_bytes // (1024 * 1024)} MiB limit.")
+        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+            async with request.form(max_files=1) as form:
+                upload = form.get("file")
+                if upload is None or isinstance(upload, str):
+                    raise ValueError("Send the image in a multipart field named 'file'.")
+                data = await upload.read(max_bytes + 1)
+                if len(data) > max_bytes:
+                    raise too_large
+                return data, upload.filename
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > max_bytes:
+                raise too_large
+        return bytes(data), None
+
+    def _register_uploads(self) -> None:
+        uploads = self.service.uploads
+
+        async def receive(request: Request):
+            data, file_name = await self.read_upload(request, uploads.max_bytes)
+            try:
+                return await anyio.to_thread.run_sync(
+                    uploads.receive, request.path_params["token"], data, file_name
+                )
+            except UploadLinkNotFound as error:
+                return JSONResponse({"error": str(error)}, status_code=404)
+
+        self.route("POST", "/api/uploads/{token}", receive, 201)
 
     def _register_favorites(self) -> None:
         visible = self.service.visible

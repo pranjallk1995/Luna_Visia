@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import tempfile
+import time
 import unittest
 import zipfile
 from io import BytesIO
@@ -18,6 +19,7 @@ from fakes import (
     FakeCredentialRepository,
     FakeImageRepository,
     FakePublicURLRepository,
+    image_bytes,
     png_payload,
 )
 
@@ -59,10 +61,14 @@ class ServerTestCase(unittest.TestCase):
         self.branding = ServerBranding()
         # Match production: a non-localhost bind leaves DNS-rebinding checks off for TestClient.
         self.server = FastMCP("Luna Visia test", host="0.0.0.0", icons=self.branding.mcp_icons())
-        VisiaMCPTools(
+        self.mcp_tools = VisiaMCPTools(
             self.server,
             self.service,
-            ImageSourceResolver(self.config.max_fetch_bytes, self.config.max_upload_redirects),
+            ImageSourceResolver(
+                self.service.visible.decoder,
+                self.config.max_image_bytes,
+                self.config.max_upload_redirects,
+            ),
             PreviewRenderer(self.config.display_max_edge),
         )
         VisiaHTTPRoutes(self.server, self.service, self.auth, self.branding)
@@ -72,6 +78,9 @@ class ServerTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
         self.downloads_temp.cleanup()
+
+    def resolver(self) -> ImageSourceResolver:
+        return ImageSourceResolver(self.service.visible.decoder, 1024 * 1024, 3)
 
     def call(self, tool_name: str, arguments: dict):
         tool = self.server._tool_manager.get_tool(tool_name)
@@ -96,7 +105,7 @@ class MCPToolTests(ServerTestCase):
         self.assertEqual(result["status"], "created")
 
     def test_upload_source_requires_exactly_one_input(self) -> None:
-        resolver = ImageSourceResolver(1024, 3)
+        resolver = self.resolver()
         with self.assertRaisesRegex(ValueError, "exactly one"):
             resolver.resolve(None, None)
         with self.assertRaisesRegex(ValueError, "exactly one"):
@@ -104,7 +113,7 @@ class MCPToolTests(ServerTestCase):
 
     def test_upload_source_rejects_private_network_urls(self) -> None:
         with self.assertRaisesRegex(ValueError, "public"):
-            ImageSourceResolver(1024, 3).resolve(None, "https://127.0.0.1/cat.png")
+            self.resolver().resolve(None, "https://127.0.0.1/cat.png")
 
     def test_view_image_returns_displayable_image_data(self) -> None:
         content = self.call("view_image", {"name": "one.png"}).to_image_content()
@@ -158,6 +167,89 @@ class MCPToolTests(ServerTestCase):
         self.service.hidden.set_hidden(["one.png"], True)
         with self.assertRaises(Exception):
             self.call("fetch_images", {"names": ["one.png"], "delivery": "zip"})
+
+
+class ChatUploadToolTests(ServerTestCase):
+    def test_upload_tool_declares_chatgpt_file_param(self) -> None:
+        tool = next(t for t in asyncio.run(self.server.list_tools()) if t.name == "upload_image")
+        self.assertEqual(tool.meta, {"openai/fileParams": ["file"]})
+        self.assertIn("download_url", json.dumps(tool.inputSchema["properties"]["file"]))
+        self.assertNotIn("name", tool.inputSchema.get("required", []))
+
+    def test_upload_from_chatgpt_file_reference(self) -> None:
+        resolver = self.server_resolver()
+        resolver._download = lambda url: (image_bytes("JPEG"), url)
+        result = self.call(
+            "upload_image",
+            {"file": {"download_url": "https://files.example.test/abc", "file_id": "file-1", "file_name": "Holiday.png"}},
+        )
+        self.assertEqual((result["status"], result["name"]), ("created", "Holiday.jpg"))
+
+    def test_upload_without_name_uses_url_filename(self) -> None:
+        self.server_resolver()._download = lambda url: (image_bytes("PNG", "green"), url)
+        result = self.call("upload_image", {"image_url": "https://cdn.example.test/photos/beach.png"})
+        self.assertEqual(result["name"], "beach.png")
+
+    def test_local_file_paths_explain_upload_link(self) -> None:
+        for path in ("/mnt/data/cat.png", "file:///tmp/cat.png", "sandbox:/mnt/data/cat.png"):
+            with self.subTest(path), self.assertRaisesRegex(Exception, "create_upload_link"):
+                self.call("upload_image", {"image_url": path})
+
+    def test_slow_upload_does_not_block_event_loop(self) -> None:
+        analyzer = self.service.indexer.analyzer
+        original = analyzer.analyze
+
+        def slow(data):
+            time.sleep(0.5)
+            return original(data)
+
+        analyzer.analyze = slow
+
+        async def scenario():
+            upload = asyncio.create_task(
+                self.server.call_tool("upload_image", {"name": "slow.png", "content_base64": png_payload("teal")})
+            )
+            started = time.monotonic()
+            await asyncio.sleep(0.05)
+            responsive_after = time.monotonic() - started
+            await upload
+            return responsive_after
+
+        self.assertLess(asyncio.run(scenario()), 0.3)
+
+    def server_resolver(self) -> ImageSourceResolver:
+        return self.mcp_tools.sources
+
+
+class UploadLinkRouteTests(ServerTestCase):
+    def link_path(self, name: str = "cat.png") -> str:
+        url = self.call("create_upload_link", {"name": name})["upload_url"]
+        return url.removeprefix("https://vault.example.test/vault")
+
+    def test_raw_body_upload(self) -> None:
+        path = self.link_path("cat")
+        with self.client() as client:
+            response = client.post(path, content=image_bytes("PNG", "purple"))
+            reused = client.post(path, content=image_bytes("PNG", "orange"))
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["name"], "cat.png")
+        self.assertEqual(reused.status_code, 404)
+
+    def test_multipart_upload(self) -> None:
+        with self.client() as client:
+            response = client.post(
+                self.link_path("dog.jpg"),
+                files={"file": ("IMG_0001.HEIC.jpg", image_bytes("JPEG", "navy"), "image/jpeg")},
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["name"], "dog.jpg")
+
+    def test_oversized_upload_is_rejected(self) -> None:
+        self.service.uploads.max_bytes = 100
+        with self.client() as client:
+            response = client.post(self.link_path(), content=b"x" * 101)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("limit", response.json()["error"])
 
 
 class MediaTests(ServerTestCase):

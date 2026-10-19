@@ -46,7 +46,9 @@ class LunaVisiaApplication:
         VisiaMCPTools(
             self.mcp,
             self.service,
-            ImageSourceResolver(config.max_fetch_bytes, config.max_upload_redirects),
+            ImageSourceResolver(
+                self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
+            ),
             PreviewRenderer(config.display_max_edge),
         )
         VisiaHTTPRoutes(self.mcp, self.service, self.auth, self.branding)

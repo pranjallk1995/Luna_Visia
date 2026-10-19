@@ -14,6 +14,7 @@ from .media import ImagePayloadDecoder
 from .models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
 from .repositories import ImageRepository, PublicURLRepository, Row
 from .storage import ImageStorage
+from .uploads import UploadLinkStore
 from .vision import OllamaVisionAnalyzer
 
 
@@ -203,9 +204,13 @@ class VisibleImageService(ImageCollectionService):
         self.max_fetch_bytes = max_fetch_bytes
 
     def ingest(self, name: str, content_base64: str, replace: bool = False) -> Row:
+        """Create or replace an image from Base64 under exactly ``name``."""
+        return self.ingest_bytes(name, self.decoder.decode_base64(content_base64), replace)
+
+    def ingest_bytes(self, name: str, data: bytes, replace: bool = False) -> Row:
         """Create or replace an image and persist matching AI metadata."""
         path = self.storage.path(name)
-        data = self.decoder.decode(name, content_base64)
+        self.decoder.validate(name, data)
         exists = path.is_file()
         if replace and not exists:
             raise FileNotFoundError(f"Image {name!r} was not found.")
@@ -216,6 +221,27 @@ class VisibleImageService(ImageCollectionService):
         analysis = self.indexer.analyze(data, modified=replace)
         with self.storage.writing(path, data):
             return self.indexer.store(name, data, analysis)
+
+    def upload(self, requested_name: str | None, data: bytes) -> dict[str, Any]:
+        """Add chat-supplied bytes, adapting the name instead of rejecting it.
+
+        The extension follows the detected format, a taken name gets a numeric
+        suffix, and bytes identical to a visible image are reported as a
+        duplicate rather than stored twice (LLM clients often retry uploads).
+        """
+        detected = self.decoder.detect_format(data)
+        duplicate = self.images.find_visible_by_content(hashlib.sha256(data).hexdigest())
+        if duplicate is not None:
+            return {
+                "status": "duplicate",
+                "message": f"This image is already stored as {duplicate['name']!r}.",
+                **duplicate,
+            }
+        name = self.storage.available_name(self.decoder.name_for(requested_name, detected))
+        result = {"status": "created", **self.ingest_bytes(name, data)}
+        if requested_name and name != requested_name:
+            result["requested_name"] = requested_name
+        return result
 
     def rename(self, name: str, new_name: str) -> dict[str, Any]:
         """Rename an image, keeping its extension, immutable ID, and public URL."""
@@ -335,6 +361,59 @@ class ImageDownloadService:
         return self.store.resolve(token)
 
 
+class UploadLinkService:
+    """Let HTTP-capable clients upload file bytes instead of Base64 tool arguments.
+
+    LLMs cannot emit megabytes of Base64, but agents with a shell or code
+    sandbox can POST a local file to a single-use link.
+    """
+
+    UPLOAD_PATH = "/api/uploads/"
+
+    def __init__(
+        self,
+        visible: VisibleImageService,
+        store: UploadLinkStore,
+        urls: PublicURLService,
+        max_bytes: int,
+    ) -> None:
+        self.visible = visible
+        self.store = store
+        self.urls = urls
+        self.max_bytes = max_bytes
+
+    def create_link(self, name: str, replace: bool = False) -> dict[str, Any]:
+        if replace:
+            self.visible.path(name)
+        ticket = self.store.create(name, replace)
+        url = f"{self.urls.base_url()}{self.UPLOAD_PATH}{ticket.token}"
+        return {
+            "status": "upload_link_ready",
+            "upload_url": url,
+            "method": "POST",
+            "name": name,
+            "replace": replace,
+            "max_bytes": self.max_bytes,
+            "expires_at": ticket.expires_at_iso,
+            "usage": (
+                "POST the raw file bytes or a multipart form field named 'file'. "
+                "The link works once."
+            ),
+            "curl_example": f"curl -fsS -F 'file=@/path/to/image' '{url}'",
+        }
+
+    def receive(self, token: str, data: bytes, file_name: str | None = None) -> dict[str, Any]:
+        """Store the uploaded bytes for a claimed ticket; failed attempts can retry."""
+        ticket = self.store.claim(token)
+        try:
+            if ticket.replace:
+                return {"status": "modified", **self.visible.ingest_bytes(ticket.name, data, replace=True)}
+            return self.visible.upload(ticket.name or file_name, data)
+        except BaseException:
+            self.store.release(ticket)
+            raise
+
+
 class HiddenImageService(ImageCollectionService):
     """The authenticated Hidden Vault: list, edit, delete, hide, and restore."""
 
@@ -406,6 +485,7 @@ class VisiaService:
         indexer: ImageIndexer,
         urls: PublicURLService,
         downloads: ImageDownloadService,
+        uploads: UploadLinkService,
     ) -> None:
         self.visible = visible
         self.hidden = hidden
@@ -413,6 +493,7 @@ class VisiaService:
         self.indexer = indexer
         self.urls = urls
         self.downloads = downloads
+        self.uploads = uploads
 
     @classmethod
     def create(
@@ -449,5 +530,8 @@ class VisiaService:
                 urls,
                 config.max_archive_images,
                 config.max_archive_bytes,
+            ),
+            uploads=UploadLinkService(
+                visible, UploadLinkStore(config.upload_ttl_seconds), urls, config.max_image_bytes
             ),
         )

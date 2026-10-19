@@ -53,6 +53,16 @@ class FakeImageRepository:
             raise FileNotFoundError(name)
         return self.rows[name]["hidden"]
 
+    def find_visible_by_content(self, content_sha256):
+        return next(
+            (
+                row
+                for row in self.rows.values()
+                if row["content_sha256"] == content_sha256 and not row["hidden"]
+            ),
+            None,
+        )
+
     def name_for_image_id(self, image_id):
         return next(
             (name for name, row in self.rows.items() if row["image_id"] == image_id), None
@@ -164,6 +174,13 @@ class FakeAnalyzer:
     def analyze(self, data):
         del data
         return ImageAnalysis(caption="A tabby cat on a sofa.", tags=["cat", "sofa"])
+
+
+def image_bytes(image_format="PNG", color="red", size=(4, 3)):
+    """Create small valid image bytes in ``image_format``."""
+    buffer = BytesIO()
+    Image.new("RGB", size, color).save(buffer, format=image_format)
+    return buffer.getvalue()
 
 
 def png_payload(color="red", size=(4, 3)):

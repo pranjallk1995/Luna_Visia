@@ -1,17 +1,26 @@
 """Tests for the Luna Visia image use cases."""
 
+import base64
 import tempfile
+import textwrap
 import unittest
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
-from fakes import FakeAnalyzer, FakeImageRepository, FakePublicURLRepository, png_payload
+from fakes import (
+    FakeAnalyzer,
+    FakeImageRepository,
+    FakePublicURLRepository,
+    image_bytes,
+    png_payload,
+)
 
 from app.config import AppConfig
 from app.models import MetadataChange, MetadataRules
 from app.services import VisiaService
+from app.uploads import UploadLinkNotFound
 from app.vision import OllamaVisionAnalyzer
 
 
@@ -295,6 +304,108 @@ class HiddenAndFavoriteTests(VisiaServiceTestCase):
         self.assertEqual([item["name"] for item in self.visible.favorites()], ["cat.png"])
         self.hidden.set_hidden(["cat.png"], True)
         self.assertEqual(self.visible.favorites(), [])
+
+
+class ChatUploadTests(VisiaServiceTestCase):
+    def test_tolerant_base64_variants_are_accepted(self):
+        raw = image_bytes("PNG")
+        standard = base64.b64encode(raw).decode()
+        variants = {
+            "wrapped": "\n".join(textwrap.wrap(standard, 76)),
+            "unpadded": standard.rstrip("="),
+            "urlsafe": base64.urlsafe_b64encode(raw).decode(),
+            "data_url": f"data:image/png;base64,{standard}",
+        }
+        for index, (label, payload) in enumerate(variants.items()):
+            with self.subTest(label):
+                self.repository.rows.clear()
+                result = self.visible.ingest(f"cat_{index}.png", payload)
+                self.assertEqual((self.root / result["name"]).read_bytes(), raw)
+
+    def test_upload_corrects_wrong_or_missing_extension(self):
+        cases = [("photo.png", "photo.jpg"), ("sunset", "sunset.jpg"), ("/mnt/data/beach.JPG", "beach.JPG")]
+        for index, (requested, expected) in enumerate(cases):
+            with self.subTest(requested):
+                result = self.visible.upload(requested, image_bytes("JPEG", size=(4 + index, 3)))
+                self.assertEqual(result["name"], expected)
+                self.assertEqual(result["status"], "created")
+                self.assertTrue((self.root / expected).is_file())
+
+    def test_upload_without_name_uses_default(self):
+        self.assertEqual(self.visible.upload(None, image_bytes("WEBP"))["name"], "image.webp")
+
+    def test_upload_reports_requested_name_when_changed(self):
+        result = self.visible.upload("photo.png", image_bytes("JPEG"))
+        self.assertEqual(result["requested_name"], "photo.png")
+
+    def test_upload_numbers_taken_names(self):
+        self.visible.upload("cat.png", image_bytes("PNG", "red"))
+        result = self.visible.upload("cat.png", image_bytes("PNG", "blue"))
+        self.assertEqual(result["name"], "cat_2.png")
+
+    def test_upload_reports_exact_duplicate_without_second_copy(self):
+        data = image_bytes("PNG")
+        first = self.visible.upload("cat.png", data)
+        again = self.visible.upload("retry.png", data)
+        self.assertEqual(again["status"], "duplicate")
+        self.assertEqual(again["name"], first["name"])
+        self.assertFalse((self.root / "retry.png").exists())
+
+    def test_hidden_duplicate_is_not_revealed(self):
+        data = image_bytes("PNG")
+        self.visible.upload("secret.png", data)
+        self.hidden.set_hidden(["secret.png"], True)
+        result = self.visible.upload("public.png", data)
+        self.assertEqual((result["status"], result["name"]), ("created", "public.png"))
+
+    def test_phone_mpo_jpeg_is_accepted(self):
+        buffer = BytesIO()
+        frames = [Image.new("RGB", (8, 6), color) for color in ("red", "blue")]
+        frames[0].save(buffer, format="MPO", save_all=True, append_images=frames[1:])
+        result = self.visible.upload("phone.jpg", buffer.getvalue())
+        self.assertEqual(result["name"], "phone.jpg")
+
+    def test_unsupported_or_invalid_content_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "not supported"):
+            self.visible.upload("scan.tiff", image_bytes("TIFF"))
+        with self.assertRaisesRegex(ValueError, "not a valid image"):
+            self.visible.upload("notes.png", b"hello")
+
+
+class UploadLinkTests(VisiaServiceTestCase):
+    def test_link_is_single_use(self):
+        uploads = self.service.uploads
+        link = uploads.create_link("cat")
+        self.assertTrue(link["upload_url"].startswith("https://vault.example.test/vault/api/uploads/"))
+        token = link["upload_url"].rsplit("/", 1)[-1]
+        result = uploads.receive(token, image_bytes("PNG"))
+        self.assertEqual((result["status"], result["name"]), ("created", "cat.png"))
+        with self.assertRaises(UploadLinkNotFound):
+            uploads.receive(token, image_bytes("PNG", "blue"))
+
+    def test_failed_upload_can_retry_on_same_link(self):
+        uploads = self.service.uploads
+        token = uploads.create_link("cat.png")["upload_url"].rsplit("/", 1)[-1]
+        with self.assertRaises(ValueError):
+            uploads.receive(token, b"not an image")
+        self.assertEqual(uploads.receive(token, image_bytes("PNG"))["status"], "created")
+
+    def test_expired_link_is_rejected(self):
+        uploads = self.service.uploads
+        uploads.store.ttl_seconds = 0
+        token = uploads.create_link("cat.png")["upload_url"].rsplit("/", 1)[-1]
+        with self.assertRaises(UploadLinkNotFound):
+            uploads.receive(token, image_bytes("PNG"))
+
+    def test_replace_link_requires_existing_visible_image(self):
+        uploads = self.service.uploads
+        with self.assertRaises(FileNotFoundError):
+            uploads.create_link("missing.png", replace=True)
+        self.visible.ingest("cat.png", png_payload())
+        token = uploads.create_link("cat.png", replace=True)["upload_url"].rsplit("/", 1)[-1]
+        result = uploads.receive(token, image_bytes("PNG", "blue"))
+        self.assertEqual(result["status"], "modified")
+        self.assertIn("ai modified", result["tags"])
 
 
 class SelectionTests(VisiaServiceTestCase):
