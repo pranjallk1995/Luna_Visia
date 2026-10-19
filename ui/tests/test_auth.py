@@ -14,15 +14,35 @@ class AuthenticationTests(unittest.TestCase):
         self.assertFalse(auth.is_allowed({"email": "other@example.com", "email_verified": True}))
 
     def test_allowed_emails_are_required_and_normalized(self):
-        with patch.dict(os.environ, {"LUNAVISIA_API_URL": "http://backend:8000"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {"LUNAVISIA_API_URL": "http://backend:8000", "LUNAVISIA_API_TOKEN": "x" * 32},
+            clear=True,
+        ):
             with self.assertRaisesRegex(RuntimeError, "LUNAVISIA_ALLOWED_EMAILS"):
                 UIConfig.from_env()
         with patch.dict(
             os.environ,
-            {"LUNAVISIA_API_URL": "http://backend:8000", "LUNAVISIA_ALLOWED_EMAILS": " Owner@Example.com "},
+            {
+                "LUNAVISIA_API_URL": "http://backend:8000",
+                "LUNAVISIA_API_TOKEN": "x" * 32,
+                "LUNAVISIA_ALLOWED_EMAILS": " Owner@Example.com ",
+            },
             clear=True,
         ):
             self.assertEqual(UIConfig.from_env().allowed_emails, frozenset({"owner@example.com"}))
+
+    def test_api_token_is_required(self):
+        with patch.dict(
+            os.environ,
+            {
+                "LUNAVISIA_API_URL": "http://backend:8000",
+                "LUNAVISIA_ALLOWED_EMAILS": "owner@example.com",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "LUNAVISIA_API_TOKEN"):
+                UIConfig.from_env()
 
 
 if __name__ == "__main__":

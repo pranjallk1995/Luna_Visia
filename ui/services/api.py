@@ -7,14 +7,12 @@ import httpx
 
 from config import UIConfig
 
-TOKEN_HEADER = "X-Hidden-Vault-Token"
-
-
 class LunaVisiaAPI:
     """Keep backend routes and HTTP details out of Streamlit views."""
 
     def __init__(self, config: UIConfig) -> None:
         self.base_url = config.api_url
+        self.headers = {"Authorization": f"Bearer {config.api_token}"}
 
     def request(
         self,
@@ -22,12 +20,10 @@ class LunaVisiaAPI:
         path: str,
         *,
         timeout: float = 30.0,
-        token: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        headers = {TOKEN_HEADER: token} if token else {}
         response = httpx.request(
-            method, f"{self.base_url}{path}", headers=headers, timeout=timeout, **kwargs
+            method, f"{self.base_url}{path}", headers=self.headers, timeout=timeout, **kwargs
         )
         response.raise_for_status()
         return response
@@ -83,49 +79,23 @@ class LunaVisiaAPI:
     def set_favorites(self, names: list[str], favorite: bool) -> None:
         self.request("POST", "/api/favorites", json={"names": names, "favorite": favorite})
 
-    # Hidden Vault access
-
-    def hidden_status(self) -> bool:
-        return self.request("GET", "/api/hidden/status", timeout=10.0).json()["configured"]
-
-    def hidden_setup(self, password: str, pin: str) -> str:
-        return self.request(
-            "POST", "/api/hidden/setup", json={"password": password, "pin": pin}
-        ).json()["token"]
-
-    def hidden_login(self, password: str) -> str:
-        return self.request(
-            "POST", "/api/hidden/login", json={"password": password}
-        ).json()["token"]
-
-    def hidden_reset(self, pin: str, new_password: str) -> str:
-        return self.request(
-            "POST", "/api/hidden/reset", json={"pin": pin, "new_password": new_password}
-        ).json()["token"]
-
-    def hidden_logout(self, token: str) -> None:
-        self.request("POST", "/api/hidden/logout", json={}, token=token)
-
     # Hidden images
 
-    def hidden_images(self, token: str) -> list[dict[str, Any]]:
-        return self.request("GET", "/api/hidden/images", token=token, timeout=10.0).json()[
-            "images"
-        ]
+    def hidden_images(self) -> list[dict[str, Any]]:
+        return self.request("GET", "/api/hidden/images", timeout=10.0).json()["images"]
 
-    def hide_images(self, names: list[str], token: str) -> None:
-        self.request("POST", "/api/hidden/hide", json={"names": names}, token=token)
+    def hide_images(self, names: list[str]) -> None:
+        self.request("POST", "/api/hidden/hide", json={"names": names})
 
-    def restore_hidden_images(self, names: list[str], token: str) -> None:
-        self.request("POST", "/api/hidden/restore", json={"names": names}, token=token)
+    def restore_hidden_images(self, names: list[str]) -> None:
+        self.request("POST", "/api/hidden/restore", json={"names": names})
 
-    def delete_hidden_images(self, names: list[str], token: str) -> None:
-        self.request("POST", "/api/hidden/delete", json={"names": names}, token=token)
+    def delete_hidden_images(self, names: list[str]) -> None:
+        self.request("POST", "/api/hidden/delete", json={"names": names})
 
-    def update_hidden_metadata(self, name: str, payload: dict, token: str) -> dict[str, Any]:
+    def update_hidden_metadata(self, name: str, payload: dict) -> dict[str, Any]:
         return self.request(
             "POST",
             self.image_path("/api/hidden/images", name, "/metadata"),
             json=payload,
-            token=token,
         ).json()

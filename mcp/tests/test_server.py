@@ -18,7 +18,6 @@ from starlette.testclient import TestClient
 
 from fakes import (
     FakeAnalyzer,
-    FakeCredentialRepository,
     FakeImageRepository,
     FakePublicURLRepository,
     image_bytes,
@@ -28,11 +27,10 @@ from fakes import (
 from app.branding import ServerBranding
 from app.config import AppConfig
 from app.downloads import DownloadStore
-from app.http_routes import TOKEN_HEADER, VisiaHTTPRoutes
+from app.http_routes import VisiaHTTPRoutes
 from app.mcp_tools import VisiaMCPTools
 from app.media import ImageArchive, PreviewRenderer, display_name
 from app.remote import ImageSourceResolver
-from app.security import CredentialPolicy, HiddenVaultAuth, SessionStore
 from app.services import VisiaService
 
 
@@ -58,9 +56,6 @@ class ServerTestCase(unittest.TestCase):
             FakePublicURLRepository(self.repository),
             FakeAnalyzer(),
         )
-        self.auth = HiddenVaultAuth(
-            FakeCredentialRepository(), CredentialPolicy(100_000), SessionStore(60)
-        )
         self.branding = ServerBranding()
         # Match production: a non-localhost bind leaves DNS-rebinding checks off for TestClient.
         self.server = FastMCP("Luna Visia test", host="0.0.0.0", icons=self.branding.mcp_icons())
@@ -73,7 +68,7 @@ class ServerTestCase(unittest.TestCase):
                 self.config.max_upload_redirects,
             ),
         )
-        VisiaHTTPRoutes(self.server, self.service, self.auth, self.branding)
+        VisiaHTTPRoutes(self.server, self.service, self.branding, "x" * 32)
         self.service.visible.ingest("one.png", png_payload("red", (1200, 800)))
         self.service.visible.ingest("two.png", png_payload("blue", (640, 480)))
 
@@ -509,26 +504,22 @@ class HTTPRouteTests(ServerTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("favorite", response.json()["error"])
 
-    def test_hidden_routes_require_session_token(self) -> None:
+    def test_hidden_routes_are_available_to_the_oauth_gated_ui(self) -> None:
+        headers = {"Authorization": f"Bearer {'x' * 32}"}
         with self.client() as client:
             self.assertEqual(client.get("/api/hidden/images").status_code, 401)
-            token = client.post(
-                "/api/hidden/setup", json={"password": "strong-password", "pin": "12345678"}
-            ).json()["token"]
-            headers = {TOKEN_HEADER: token}
-            hidden = client.post("/api/hidden/hide", json={"names": ["one.png"]}, headers=headers)
+            hidden = client.post(
+                "/api/hidden/hide", json={"names": ["one.png"]}, headers=headers
+            )
             images = client.get("/api/hidden/images", headers=headers).json()["images"]
             updated = client.post(
                 "/api/hidden/images/one.png/metadata",
                 json={"add_tags": ["Private"]},
                 headers=headers,
             )
-            client.post("/api/hidden/logout", headers=headers)
-            locked = client.get("/api/hidden/images", headers=headers)
         self.assertEqual(hidden.json()["status"], "hidden")
         self.assertEqual([image["name"] for image in images], ["one.png"])
         self.assertEqual(updated.json()["tags"], ["cat", "sofa", "private"])
-        self.assertEqual(locked.status_code, 401)
 
 
 class BrandingTests(ServerTestCase):

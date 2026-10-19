@@ -20,7 +20,6 @@ class SessionState:
         "view_page": 0,
         "pending_view_delete": None,
         "pending_view_hide": None,
-        "hidden_auth_token": None,
         "gallery_transitions": dict,
     }
 
@@ -38,14 +37,6 @@ class SessionState:
     @staticmethod
     def set_gallery_view(mode: str) -> None:
         st.session_state.gallery_view_mode = mode
-
-    @staticmethod
-    def hidden_token() -> str | None:
-        return st.session_state.hidden_auth_token
-
-    @staticmethod
-    def set_hidden_token(token: str | None) -> None:
-        st.session_state.hidden_auth_token = token
 
     @staticmethod
     def refresh_gallery() -> None:

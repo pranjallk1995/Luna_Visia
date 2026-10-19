@@ -10,8 +10,7 @@ from .http_routes import VisiaHTTPRoutes
 from .mcp_tools import VisiaMCPTools
 from .models import MetadataRules
 from .remote import ImageSourceResolver
-from .repositories import CredentialRepository, ImageRepository, PublicURLRepository
-from .security import CredentialPolicy, HiddenVaultAuth, SessionStore
+from .repositories import ImageRepository, PublicURLRepository
 from .services import VisiaService
 from .vision import OllamaVisionAnalyzer
 
@@ -33,11 +32,6 @@ class LunaVisiaApplication:
                 MetadataRules(config.max_tags, config.search_stop_words),
             ),
         )
-        self.auth = HiddenVaultAuth(
-            CredentialRepository(self.database),
-            CredentialPolicy(config.password_hash_iterations),
-            SessionStore(config.hidden_session_seconds),
-        )
         self.branding = ServerBranding()
         self.mcp = FastMCP(
             "Luna Visia", host=config.host, port=config.port, icons=self.branding.mcp_icons()
@@ -49,7 +43,7 @@ class LunaVisiaApplication:
                 self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
             ),
         )
-        VisiaHTTPRoutes(self.mcp, self.service, self.auth, self.branding)
+        VisiaHTTPRoutes(self.mcp, self.service, self.branding, config.api_token)
 
     def run(self) -> None:
         """Serve Luna Visia over the streamable HTTP transport."""

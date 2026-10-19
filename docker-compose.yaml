@@ -76,6 +76,7 @@ services:
       OLLAMA_URL: http://luna-visia-ollama:11434
       VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
       LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL:-}
+      LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
     expose:
       - "8000"
     ports:
@@ -124,6 +125,7 @@ services:
       IMAGE_DIR: /data/images
       MCP_URL: http://luna-visia-mcp:8000/mcp
       LUNAVISIA_API_URL: http://luna-visia-mcp:8000
+      LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
       LUNAVISIA_ALLOWED_EMAILS: ${LUNAVISIA_ALLOWED_EMAILS:?Set LUNAVISIA_ALLOWED_EMAILS to the Google accounts allowed to access Visia}
     ports:
       - "127.0.0.1:18501:8501"

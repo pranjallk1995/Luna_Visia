@@ -1,6 +1,7 @@
 # Local secrets
 .env
 .env.*
+!.env.example
 ui/.streamlit/secrets.toml
 
 # Python

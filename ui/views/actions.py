@@ -44,10 +44,7 @@ class GalleryActions:
         self._after_delete()
 
     def hide(self, name: str) -> None:
-        token = SessionState.hidden_token()
-        if not token:
-            raise PermissionError("Unlock Hidden Images before hiding an image.")
-        self.api.hide_images([name], token)
+        self.api.hide_images([name])
         st.session_state.pending_view_hide = None
         SessionState.refresh_gallery()
 
@@ -70,7 +67,7 @@ class FavoriteActions(GalleryActions):
 
 
 class HiddenActions(GalleryActions):
-    """Authenticated Hidden Vault actions; Favorite state is not exposed."""
+    """Hidden-image actions for the OAuth-authenticated application user."""
 
     shows_favorites = False
     allows_hiding = False
@@ -82,14 +79,12 @@ class HiddenActions(GalleryActions):
         return set()
 
     def restore(self, name: str) -> None:
-        self.api.restore_hidden_images([name], SessionState.hidden_token())
+        self.api.restore_hidden_images([name])
         SessionState.refresh_gallery()
 
     def delete(self, name: str) -> None:
-        self.api.delete_hidden_images([name], SessionState.hidden_token())
+        self.api.delete_hidden_images([name])
         self._after_delete()
 
     def update_metadata(self, name: str, **change) -> dict:
-        return self.api.update_hidden_metadata(
-            name, self.api.metadata_change(**change), SessionState.hidden_token()
-        )
+        return self.api.update_hidden_metadata(name, self.api.metadata_change(**change))

@@ -9,15 +9,12 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 
 from .branding import ServerBranding
+from .auth import APIAuthenticator
 from .models import MetadataChange
-from .security import HiddenVaultAuth
 from .services import VisiaService
 from .uploads import UploadLinkNotFound
 
 Handler = Callable[[Request], Awaitable[Any]]
-TOKEN_HEADER = "X-Hidden-Vault-Token"
-
-
 class VisiaHTTPRoutes:
     """Translate HTTP requests into service calls and results into JSON."""
 
@@ -34,13 +31,13 @@ class VisiaHTTPRoutes:
         self,
         server: FastMCP,
         service: VisiaService,
-        auth: HiddenVaultAuth,
         branding: ServerBranding,
+        api_token: str,
     ) -> None:
         self.server = server
         self.service = service
-        self.auth = auth
         self.branding = branding
+        self.authenticator = APIAuthenticator(api_token)
         self._register()
 
     @staticmethod
@@ -66,10 +63,6 @@ class VisiaHTTPRoutes:
         )
 
     @staticmethod
-    def token(request: Request) -> str | None:
-        return request.headers.get(TOKEN_HEADER)
-
-    @staticmethod
     def name(request: Request) -> str:
         return request.path_params["name"]
 
@@ -82,12 +75,14 @@ class VisiaHTTPRoutes:
         *,
         protected: bool = False,
     ) -> None:
-        """Register ``handler`` with optional Hidden Vault auth and error translation."""
+        """Register ``handler`` with uniform error translation."""
 
         async def endpoint(request: Request) -> Response:
             try:
                 if protected:
-                    self.auth.require(self.token(request))
+                    rejection = self.authenticator.rejection(request)
+                    if rejection is not None:
+                        return rejection
                 result = await handler(request)
                 if isinstance(result, Response):
                     return result
@@ -104,7 +99,6 @@ class VisiaHTTPRoutes:
         self._register_favorites()
         self._register_downloads()
         self._register_uploads()
-        self._register_hidden_access()
         self._register_hidden_images()
 
     async def health(self, request: Request) -> dict:
@@ -238,38 +232,6 @@ class VisiaHTTPRoutes:
 
         self.route("GET", "/api/favorites", favorites)
         self.route("POST", "/api/favorites", update_favorites)
-
-    def _register_hidden_access(self) -> None:
-        auth = self.auth
-
-        async def status(request: Request):
-            return {"configured": auth.configured()}
-
-        async def setup(request: Request):
-            payload = await self.payload(request)
-            return {"token": auth.setup(payload.get("password", ""), str(payload.get("pin", "")))}
-
-        async def login(request: Request):
-            payload = await self.payload(request)
-            return {"token": auth.login(payload.get("password", ""))}
-
-        async def reset(request: Request):
-            payload = await self.payload(request)
-            return {
-                "token": auth.reset(
-                    str(payload.get("pin", "")), payload.get("new_password", "")
-                )
-            }
-
-        async def logout(request: Request):
-            auth.logout(self.token(request))
-            return {"status": "logged_out"}
-
-        self.route("GET", "/api/hidden/status", status)
-        self.route("POST", "/api/hidden/setup", setup, 201)
-        self.route("POST", "/api/hidden/login", login)
-        self.route("POST", "/api/hidden/reset", reset)
-        self.route("POST", "/api/hidden/logout", logout)
 
     def _register_hidden_images(self) -> None:
         hidden = self.service.hidden

@@ -15,6 +15,7 @@ class AppConfig:
     ollama_url: str
     vision_model: str
     public_base_url: str = ""
+    api_token: str = ""
     host: str = "0.0.0.0"
     port: int = 8000
     allowed_formats: dict[str, str] = field(
@@ -97,10 +98,14 @@ class AppConfig:
                 raise RuntimeError(
                     "LUNAVISIA_PUBLIC_BASE_URL must be a valid HTTPS URL."
                 )
+        api_token = os.getenv("LUNAVISIA_API_TOKEN", "").strip()
+        if len(api_token) < 32:
+            raise RuntimeError("LUNAVISIA_API_TOKEN must contain at least 32 characters.")
         return cls(
             image_dir=image_dir,
             database_url=database_url,
             ollama_url=ollama_url,
             vision_model=vision_model,
             public_base_url=public_base_url,
+            api_token=api_token,
         )

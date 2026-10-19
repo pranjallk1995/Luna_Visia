@@ -32,6 +32,8 @@ class LunaStyle:
             .block-container { max-width:1180px; padding-top:2.35rem; padding-bottom:3rem; }
             .stApp p,.stApp label,.stApp [data-testid="stMarkdownContainer"] { color:var(--lv-text); }
             div[data-testid="stHorizontalBlock"]:has(.lv-header) { align-items:center; margin-bottom:.55rem; }
+            .st-key-header_sign_out,.st-key-header_sign_out .stButton { display:flex; justify-content:flex-end; width:7rem!important; min-width:7rem!important; margin-left:auto; }
+            .st-key-header_sign_out button { width:7rem!important; min-width:7rem!important; min-height:2.625rem!important; }
             div[data-testid="stHorizontalBlock"]:has(.lv-header) .stButton > button {
                 min-height:2.625rem!important; height:2.625rem;
                 padding:.45rem .9rem!important;

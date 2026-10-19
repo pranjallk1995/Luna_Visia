@@ -18,6 +18,7 @@ class UIConfig:
 
     image_dir: Path
     api_url: str
+    api_token: str
     allowed_emails: frozenset[str]
     card_size: tuple[int, int] = (420, 248)
     gallery_corner_radius: int = 10
@@ -39,6 +40,9 @@ class UIConfig:
         parsed = urlparse(api_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise RuntimeError("LUNAVISIA_API_URL must be a valid HTTP(S) URL.")
+        api_token = os.getenv("LUNAVISIA_API_TOKEN", "").strip()
+        if len(api_token) < 32:
+            raise RuntimeError("LUNAVISIA_API_TOKEN must contain at least 32 characters.")
         allowed_emails = frozenset(
             email.strip().casefold()
             for email in os.getenv("LUNAVISIA_ALLOWED_EMAILS", "").split(",")
@@ -49,5 +53,6 @@ class UIConfig:
         return cls(
             image_dir=Path(os.getenv("IMAGE_DIR", "/data/images")),
             api_url=api_url,
+            api_token=api_token,
             allowed_emails=allowed_emails,
         )

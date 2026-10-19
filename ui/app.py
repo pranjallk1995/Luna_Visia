@@ -120,8 +120,8 @@ class LunaVisiaApp:
                 unsafe_allow_html=True,
             )
         with buttons_column:
-            grid_column, list_column, upload_column = st.columns(
-                [1, 1, 3], vertical_alignment="center", gap="small"
+            grid_column, list_column, upload_column, sign_out_column = st.columns(
+                [1, 1, 3, 2], vertical_alignment="center", gap="small"
             )
             for column, mode, icon, label in (
                 (grid_column, "grid", ":material/grid_view:", "Grid view"),
@@ -135,13 +135,21 @@ class LunaVisiaApp:
                     args=(mode,),
                     width="stretch",
                 )
-            return upload_column.button(
+            open_upload = upload_column.button(
                 "Upload Images",
                 icon=":material/upload:",
                 type="primary",
                 key="open_upload_dialog",
                 width="stretch",
             )
+            sign_out_column.button(
+                "Sign out",
+                icon=":material/logout:",
+                key="header_sign_out",
+                on_click=st.logout,
+                width="stretch",
+            )
+            return open_upload
 
     def render(self) -> None:
         SessionState.initialize()
@@ -151,7 +159,6 @@ class LunaVisiaApp:
             "Luna Visia", "Private AI-managed image storage"
         )
         open_upload = self.render_header()
-        st.button("Sign out", icon=":material/logout:", key="header_sign_out", on_click=st.logout)
         if open_upload:
             UploadDialog(self.context).open()
         GalleryNavigation.render()(self.context).render()
