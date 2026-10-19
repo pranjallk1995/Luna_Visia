@@ -1,7 +1,8 @@
-"""Image byte validation, chat previews, and ZIP bundles."""
+"""Image byte validation, chat previews, and ZIP archives."""
 
 import base64
 import binascii
+import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -107,12 +108,37 @@ class PreviewRenderer:
 
 
 class ImageArchive:
-    """Package original image files into an in-memory ZIP."""
+    """Write original image files into a ZIP on disk.
 
-    @staticmethod
-    def build(paths: list[Path]) -> bytes:
-        archive = BytesIO()
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-            for path in paths:
-                bundle.write(path, arcname=path.name)
-        return archive.getvalue()
+    Entries are stored uncompressed: every supported format is already
+    compressed, so deflating only costs CPU and can grow the archive.
+    """
+
+    UPLOAD_PREFIX = re.compile(r"[0-9a-f]{32}_(?=.)", re.IGNORECASE)
+
+    @classmethod
+    def entry_name(cls, stored_name: str) -> str:
+        """Drop the internal upload prefix so entries keep their original names."""
+        return cls.UPLOAD_PREFIX.sub("", stored_name, count=1)
+
+    @classmethod
+    def entry_names(cls, paths: list[Path]) -> list[str]:
+        """Return unique entry names, numbering duplicates like ``cat (2).png``."""
+        names: list[str] = []
+        taken: set[str] = set()
+        for path in paths:
+            name = cls.entry_name(path.name)
+            stem, suffix = Path(name).stem, Path(name).suffix
+            counter = 2
+            while name.casefold() in taken:
+                name = f"{stem} ({counter}){suffix}"
+                counter += 1
+            taken.add(name.casefold())
+            names.append(name)
+        return names
+
+    @classmethod
+    def write(cls, paths: list[Path], destination: Path) -> None:
+        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as bundle:
+            for path, name in zip(paths, cls.entry_names(paths)):
+                bundle.write(path, arcname=name)

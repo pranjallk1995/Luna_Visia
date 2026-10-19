@@ -20,6 +20,7 @@ class VisiaServiceTestCase(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.downloads_temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.repository = FakeImageRepository()
         self.config = AppConfig(
@@ -28,6 +29,7 @@ class VisiaServiceTestCase(unittest.TestCase):
             ollama_url="http://ollama:11434",
             vision_model="test-vision",
             public_base_url="https://vault.example.test/vault",
+            download_dir=Path(self.downloads_temp.name),
         )
         self.service = VisiaService.create(
             self.config,
@@ -40,6 +42,7 @@ class VisiaServiceTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+        self.downloads_temp.cleanup()
 
 
 class IngestTests(VisiaServiceTestCase):

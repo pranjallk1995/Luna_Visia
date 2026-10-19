@@ -100,6 +100,7 @@ class VisiaHTTPRoutes:
         self._register_icons()
         self._register_images()
         self._register_favorites()
+        self._register_downloads()
         self._register_hidden_access()
         self._register_hidden_images()
 
@@ -165,6 +166,23 @@ class VisiaHTTPRoutes:
         self.route("DELETE", "/api/images/{name}", delete)
         self.route("POST", "/api/images/{name}/rename", rename)
         self.route("POST", "/api/images/{name}/metadata", update_metadata)
+
+    def _register_downloads(self) -> None:
+        downloads = self.service.downloads
+
+        async def download(request: Request):
+            try:
+                ticket = downloads.archive(request.path_params["token"])
+            except FileNotFoundError as error:
+                return JSONResponse({"error": str(error)}, status_code=404)
+            return FileResponse(
+                ticket.path,
+                media_type="application/zip",
+                filename=ticket.file_name,
+                headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+            )
+
+        self.route("GET", "/api/downloads/{token}", download)
 
     def _register_favorites(self) -> None:
         visible = self.service.visible

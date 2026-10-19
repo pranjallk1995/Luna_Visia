@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import AppConfig
+from .downloads import DownloadStore, DownloadTicket
 from .media import ImagePayloadDecoder
 from .models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
 from .repositories import ImageRepository, PublicURLRepository, Row
@@ -258,17 +259,80 @@ class VisibleImageService(ImageCollectionService):
         """Resolve a stable image ID, with legacy filename compatibility."""
         return self.path(self.images.name_for_image_id(identifier) or identifier)
 
-    def select_paths(self, names: list[str]) -> list[Path]:
-        """Resolve a bounded, deduplicated batch of visible image paths."""
+    def select_paths(
+        self,
+        names: list[str],
+        max_images: int | None = None,
+        max_bytes: int | None = None,
+    ) -> list[Path]:
+        """Resolve a bounded, deduplicated batch of visible image paths.
+
+        Limits default to the chat-display bounds; callers that do not embed
+        image bytes in a tool result (such as ZIP downloads) pass larger ones.
+        """
+        max_images = max_images or self.max_fetch_images
+        max_bytes = max_bytes or self.max_fetch_bytes
         if isinstance(names, list) and any(not isinstance(name, str) for name in names):
             raise ValueError("Every image name must be a string.")
         clean_names = unique_names(names, "Provide at least one image name.")
-        if len(clean_names) > self.max_fetch_images:
-            raise ValueError(f"Fetch at most {self.max_fetch_images} images at a time.")
+        if len(clean_names) > max_images:
+            raise ValueError(f"Fetch at most {max_images} images at a time.")
         paths = [self.path(name) for name in clean_names]
-        if sum(path.stat().st_size for path in paths) > self.max_fetch_bytes:
-            raise ValueError("Selected images exceed the 50 MiB fetch limit.")
+        if sum(path.stat().st_size for path in paths) > max_bytes:
+            raise ValueError(
+                f"Selected images exceed the {self.format_bytes(max_bytes)} limit; "
+                "request fewer images."
+            )
         return paths
+
+    @staticmethod
+    def format_bytes(size: int) -> str:
+        if size >= 1024**3 and size % 1024**3 == 0:
+            return f"{size // 1024**3} GiB"
+        return f"{size / 1024**2:.0f} MiB"
+
+
+class ImageDownloadService:
+    """Package visible images as a ZIP behind a short-lived public download link.
+
+    Archives are never embedded in tool results: MCP clients reject large
+    messages, and chat apps cannot hand an embedded blob to the user as a file.
+    """
+
+    DOWNLOAD_PATH = "/api/downloads/"
+
+    def __init__(
+        self,
+        visible: VisibleImageService,
+        store: DownloadStore,
+        urls: PublicURLService,
+        max_images: int,
+        max_bytes: int,
+    ) -> None:
+        self.visible = visible
+        self.store = store
+        self.urls = urls
+        self.max_images = max_images
+        self.max_bytes = max_bytes
+
+    def create_zip(self, names: list[str]) -> dict[str, Any]:
+        """Archive the named visible images and return their download link."""
+        base_url = self.urls.base_url()
+        paths = self.visible.select_paths(names, self.max_images, self.max_bytes)
+        ticket = self.store.create(paths)
+        return {
+            "status": "zip_ready",
+            "download_url": f"{base_url}{self.DOWNLOAD_PATH}{ticket.token}",
+            "file_name": ticket.file_name,
+            "image_count": ticket.image_count,
+            "size_bytes": ticket.size_bytes,
+            "expires_at": ticket.expires_at_iso,
+            "names": [path.name for path in paths],
+        }
+
+    def archive(self, token: str) -> DownloadTicket:
+        """Return the live archive ticket for a download token."""
+        return self.store.resolve(token)
 
 
 class HiddenImageService(ImageCollectionService):
@@ -341,12 +405,14 @@ class VisiaService:
         search: SearchService,
         indexer: ImageIndexer,
         urls: PublicURLService,
+        downloads: ImageDownloadService,
     ) -> None:
         self.visible = visible
         self.hidden = hidden
         self.search = search
         self.indexer = indexer
         self.urls = urls
+        self.downloads = downloads
 
     @classmethod
     def create(
@@ -362,18 +428,26 @@ class VisiaService:
         urls = PublicURLService(public_urls)
         urls.seed(config.public_base_url)
         indexer = ImageIndexer(storage, images, analyzer, urls)
+        visible = VisibleImageService(
+            storage,
+            images,
+            rules,
+            ImagePayloadDecoder(config.allowed_formats, config.max_image_bytes),
+            indexer,
+            config.max_fetch_images,
+            config.max_fetch_bytes,
+        )
         return cls(
-            visible=VisibleImageService(
-                storage,
-                images,
-                rules,
-                ImagePayloadDecoder(config.allowed_formats, config.max_image_bytes),
-                indexer,
-                config.max_fetch_images,
-                config.max_fetch_bytes,
-            ),
+            visible=visible,
             hidden=HiddenImageService(storage, images, rules),
             search=SearchService(images, rules, config.search_limit_max),
             indexer=indexer,
             urls=urls,
+            downloads=ImageDownloadService(
+                visible,
+                DownloadStore(config.download_dir, config.download_ttl_seconds),
+                urls,
+                config.max_archive_images,
+                config.max_archive_bytes,
+            ),
         )

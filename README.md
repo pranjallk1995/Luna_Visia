@@ -69,7 +69,7 @@ through natural-language requests.
 
 - Search filenames, AI captions, and tags without reopening original image files.
 - Browse natural-aspect thumbnails with six images per page and full-size viewing.
-- Download individual images or fetch selected originals as a ZIP through MCP.
+- Download individual images, or have an LLM package selected originals into a ZIP and return a short-lived download link.
 - Rename images safely while keeping filenames, metadata, and generated URLs synchronized.
 - Edit captions and tags without rerunning vision analysis.
 - Delete image files and their metadata together.
@@ -204,7 +204,7 @@ Luna Visia exposes these tools to connected MCP clients:
 
 - `list_images` - list visible images with captions and tags.
 - `view_image` - return a visible image.
-- `fetch_images` - display selected visible images in chat or return them as a ZIP.
+- `fetch_images` - display selected visible images in chat (up to 20 images / 50 MiB), or with `delivery="zip"` package up to 200 originals (2 GiB) and return a `download_url` on the public base URL that expires after 30 minutes. The ZIP is never embedded in the tool result, which keeps large downloads within MCP message limits.
 - `get_image_url` - return the stored public URL for one visible image when a base URL is configured.
 
 ### Add and modify images
@@ -354,7 +354,8 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/app/repositories.py` - PostgreSQL persistence: `ImageRepository`, `PublicURLRepository`, and `CredentialRepository`.
 - `mcp/app/database.py` - `Database` connection handling and the idempotent schema.
 - `mcp/app/storage.py` - `ImageStorage`, safe vault paths plus write, rename, and delete operations that roll back if metadata persistence fails.
-- `mcp/app/media.py` - upload byte validation, chat previews and contact sheets, and ZIP bundles.
+- `mcp/app/media.py` - upload byte validation, chat previews and contact sheets, and `ImageArchive` (uncompressed ZIPs with original filenames).
+- `mcp/app/downloads.py` - `DownloadStore`, short-lived ZIP archives behind unguessable `/api/downloads/{token}` links.
 - `mcp/app/remote.py` - `ImageSourceResolver` for Base64, data-URL, and SSRF-guarded HTTPS upload sources.
 - `mcp/app/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
 - `mcp/app/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.

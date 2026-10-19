@@ -1,17 +1,13 @@
 """MCP tools that let LLM clients manage Luna Visia images."""
 
-import base64
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP, Image as MCPImage
-from mcp.types import BlobResourceContents, EmbeddedResource
 
-from .media import ImageArchive, PreviewRenderer
+from .media import PreviewRenderer
 from .models import MetadataChange
 from .remote import ImageSourceResolver
 from .services import VisiaService
-
-ZIP_RESOURCE_URI = "file:///luna-visia/luna-visia-images.zip"
 
 
 class VisiaMCPTools:
@@ -37,17 +33,6 @@ class VisiaMCPTools:
 
     def preview(self, paths) -> MCPImage:
         return MCPImage(data=self.previews.render(paths), format="jpeg")
-
-    @staticmethod
-    def zip_resource(paths) -> EmbeddedResource:
-        return EmbeddedResource(
-            type="resource",
-            resource=BlobResourceContents(
-                uri=ZIP_RESOURCE_URI,
-                mimeType="application/zip",
-                blob=base64.b64encode(ImageArchive.build(paths)).decode("ascii"),
-            ),
-        )
 
     def _register_library_tools(self) -> None:
         server, visible, search, indexer = (
@@ -79,7 +64,12 @@ class VisiaMCPTools:
             return indexer.backfill()
 
     def _register_delivery_tools(self) -> None:
-        server, visible, urls = self.server, self.service.visible, self.service.urls
+        server, visible, urls, downloads = (
+            self.server,
+            self.service.visible,
+            self.service.urls,
+            self.service.downloads,
+        )
 
         @server.tool()
         def view_image(name: str) -> MCPImage:
@@ -105,15 +95,18 @@ class VisiaMCPTools:
         def fetch_images(names: list[str], delivery: Literal["display", "zip"] = "display"):
             """Fetch visible images for chat display or as a downloadable ZIP.
 
-            Use exact filenames returned by list_images or search_images. The display
-            mode returns one preview or a labeled contact sheet; zip returns the
-            original files in one embedded ZIP resource.
+            Use exact filenames returned by list_images or search_images.
+            - display: returns one preview or a labeled contact sheet (at most 20
+              images, 50 MiB of originals).
+            - zip: packages the original files on the server and returns a
+              download_url (at most 200 images, 2 GiB). Give the user that link
+              exactly as returned; it expires at expires_at (30 minutes) and the
+              ZIP is not embedded in this result.
             Hidden images are never available through this public tool.
             """
-            paths = visible.select_paths(names)
-            if delivery == "display":
-                return [self.preview(paths)]
-            return self.zip_resource(paths)
+            if delivery == "zip":
+                return downloads.create_zip(names)
+            return [self.preview(visible.select_paths(names))]
 
     def _register_mutation_tools(self) -> None:
         server, visible, sources = self.server, self.service.visible, self.sources

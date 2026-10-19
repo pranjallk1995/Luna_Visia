@@ -36,6 +36,7 @@ class ServerTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
+        self.downloads_temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.config = AppConfig(
             image_dir=self.root,
@@ -43,6 +44,7 @@ class ServerTestCase(unittest.TestCase):
             ollama_url="http://ollama:11434",
             vision_model="test-vision",
             public_base_url="https://vault.example.test/vault",
+            download_dir=Path(self.downloads_temp.name),
         )
         self.repository = FakeImageRepository()
         self.service = VisiaService.create(
@@ -69,6 +71,7 @@ class ServerTestCase(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+        self.downloads_temp.cleanup()
 
     def call(self, tool_name: str, arguments: dict):
         tool = self.server._tool_manager.get_tool(tool_name)
@@ -140,14 +143,21 @@ class MCPToolTests(ServerTestCase):
         with self.assertRaises(Exception):
             self.call("fetch_images", {"names": ["one.png"]})
 
-    def test_fetch_images_zip_contains_selected_originals(self) -> None:
-        resource = self.call(
-            "fetch_images", {"names": ["one.png", "two.png"], "delivery": "zip"}
-        ).resource
-        self.assertEqual(resource.mimeType, "application/zip")
-        with zipfile.ZipFile(BytesIO(base64.b64decode(resource.blob))) as bundle:
-            self.assertEqual(bundle.namelist(), ["one.png", "two.png"])
-            self.assertEqual(bundle.read("one.png"), (self.root / "one.png").read_bytes())
+    def test_fetch_images_zip_returns_download_link_not_blob(self) -> None:
+        result = self.call("fetch_images", {"names": ["one.png", "two.png"], "delivery": "zip"})
+        self.assertEqual(result["status"], "zip_ready")
+        self.assertTrue(
+            result["download_url"].startswith(
+                "https://vault.example.test/vault/api/downloads/"
+            )
+        )
+        self.assertEqual((result["image_count"], result["names"]), (2, ["one.png", "two.png"]))
+        self.assertLess(len(json.dumps(result)), 1024)
+
+    def test_fetch_images_zip_rejects_hidden_images(self) -> None:
+        self.service.hidden.set_hidden(["one.png"], True)
+        with self.assertRaises(Exception):
+            self.call("fetch_images", {"names": ["one.png"], "delivery": "zip"})
 
 
 class MediaTests(ServerTestCase):
@@ -162,10 +172,76 @@ class MediaTests(ServerTestCase):
         with PillowImage.open(BytesIO(jpeg)) as image:
             self.assertEqual(image.size, (1024, 424))
 
-    def test_archive_contains_selected_originals(self) -> None:
-        archive = ImageArchive.build([self.root / "two.png"])
-        with zipfile.ZipFile(BytesIO(archive)) as bundle:
+    def test_archive_stores_originals_uncompressed(self) -> None:
+        destination = Path(self.downloads_temp.name) / "test.zip"
+        ImageArchive.write([self.root / "two.png"], destination)
+        with zipfile.ZipFile(destination) as bundle:
+            entry = bundle.getinfo("two.png")
+            self.assertEqual(entry.compress_type, zipfile.ZIP_STORED)
             self.assertEqual(bundle.read("two.png"), (self.root / "two.png").read_bytes())
+
+    def test_archive_entry_names_drop_upload_prefix_and_stay_unique(self) -> None:
+        prefix_a, prefix_b = "a" * 32, "b" * 32
+        names = ImageArchive.entry_names(
+            [Path(f"{prefix_a}_cat.png"), Path(f"{prefix_b}_cat.png"), Path("Cat.png"), Path("dog.png")]
+        )
+        self.assertEqual(names, ["cat.png", "cat (2).png", "Cat (3).png", "dog.png"])
+
+
+class DownloadRouteTests(ServerTestCase):
+    def create_zip(self, names: list[str]) -> dict:
+        return self.call("fetch_images", {"names": names, "delivery": "zip"})
+
+    @staticmethod
+    def path_of(download_url: str) -> str:
+        return download_url.removeprefix("https://vault.example.test/vault")
+
+    def test_download_link_serves_zip_attachment(self) -> None:
+        result = self.create_zip(["two.png", "one.png"])
+        with self.client() as client:
+            response = client.get(self.path_of(result["download_url"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/zip")
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertIn("luna-visia-images.zip", response.headers["content-disposition"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(len(response.content), result["size_bytes"])
+        with zipfile.ZipFile(BytesIO(response.content)) as bundle:
+            self.assertEqual(bundle.namelist(), ["two.png", "one.png"])
+            self.assertEqual(bundle.read("one.png"), (self.root / "one.png").read_bytes())
+
+    def test_zip_exceeding_display_limits_is_allowed(self) -> None:
+        names = []
+        for index in range(self.config.max_fetch_images + 5):
+            name = f"bulk_{index}.png"
+            self.service.visible.ingest(name, png_payload("red"))
+            names.append(name)
+        result = self.create_zip(names)
+        self.assertEqual(result["image_count"], len(names))
+
+    def test_zip_enforces_archive_limits(self) -> None:
+        downloads = self.service.downloads
+        downloads.max_bytes = 10
+        with self.assertRaisesRegex(ValueError, "limit"):
+            downloads.create_zip(["one.png"])
+
+    def test_unknown_or_expired_links_return_404_and_are_purged(self) -> None:
+        live = self.create_zip(["one.png"])
+        self.service.downloads.store.ttl_seconds = 0
+        expired = self.create_zip(["two.png"])
+        with self.client() as client:
+            self.assertEqual(client.get("/api/downloads/not-a-token").status_code, 404)
+            self.assertEqual(client.get(self.path_of(expired["download_url"])).status_code, 404)
+            self.assertEqual(client.get(self.path_of(live["download_url"])).status_code, 200)
+        remaining = [path.stem for path in Path(self.downloads_temp.name).glob("*.zip")]
+        self.assertEqual(remaining, [live["download_url"].rsplit("/", 1)[-1]])
+
+    def test_restart_discards_orphaned_archives(self) -> None:
+        self.create_zip(["one.png"])
+        from app.downloads import DownloadStore
+
+        DownloadStore(Path(self.downloads_temp.name), 60)
+        self.assertEqual(list(Path(self.downloads_temp.name).glob("*.zip")), [])
 
 
 class HTTPRouteTests(ServerTestCase):
