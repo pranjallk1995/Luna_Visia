@@ -24,8 +24,7 @@ operations without repeatedly opening every original image.
 
 The Streamlit interface lets you upload, search, view, favorite, download, hide,
 restore, and delete images. Image data, metadata, and AI models persist in Docker volumes,
-while the password-protected hidden vault stays separate from normal galleries
-and searches.
+while OAuth-gated hidden images stay separate from normal galleries and searches.
 
 <p align="center">
   <img src="docs/assets/luna-visia-image-view.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -43,8 +42,9 @@ The main gallery provides filename search, pagination, AI-generated captions and
 tags, full-size viewing, downloads, and deletion controls. Persisted Favorites
 provide a focused collection for images you return to often.
 
-The hidden vault keeps private images behind a password and supports adding,
-viewing, downloading, restoring, searching, and deleting them separately.
+Hidden Images uses the same allowlisted Google OAuth identity as the rest of
+the UI and supports adding, viewing, downloading, restoring, searching, and
+deleting images separately.
 
 Connect Luna Visia's `/mcp` endpoint to the ChatGPT app as a custom MCP server.
 Once connected, you can ask ChatGPT to search the vault, inspect image metadata,
@@ -77,9 +77,9 @@ through natural-language requests.
 ### Favorites and hidden images
 
 - Maintain a persisted Favorites collection for visible images.
-- Protect hidden images behind a password and exactly eight-digit reset PIN.
-- Store only salted password and PIN hashes.
-- View, edit, download, restore, or permanently delete hidden images through authenticated UI routes.
+- Protect Hidden Images with the allowlisted Google OAuth UI session.
+- Authenticate the UI's Hidden Images backend requests with a private service credential.
+- View, edit, download, restore, or permanently delete hidden images through authenticated routes.
 - Exclude hidden images from public galleries, searches, previews, URLs, and MCP tools.
 
 ### Local AI and assistant access
@@ -115,6 +115,32 @@ The UI reads original images from `image_data` as read-only. All mutations go th
 
 ## Start
 
+Create the local environment file:
+
+```sh
+cp .env.example .env
+```
+
+Replace `LUNAVISIA_API_TOKEN` with a private random value of at least 32
+characters and set `LUNAVISIA_ALLOWED_EMAILS` to the comma-separated Google
+accounts allowed to use the UI. Keep `.env` private; only `.env.example` is
+intended for version control.
+
+### Google OAuth settings
+
+1. In Google Cloud, create an OAuth 2.0 client with application type **Web application**.
+2. Add the redirect URI used by this deployment. For the hosted app it is
+   `https://visia.lunaapps.fyi/oauth2callback`; for local access use
+   `http://localhost:18501/oauth2callback` and set the same value below.
+3. Copy `ui/.streamlit/secrets.example.toml` to
+   `ui/.streamlit/secrets.toml`.
+4. Set `redirect_uri`, a strong random `cookie_secret`, the Google `client_id`,
+   and `client_secret`. Keep Google's discovery URL unchanged.
+
+OAuth client credentials belong only in `ui/.streamlit/secrets.toml`, which is
+ignored by Git. The `.env` allowlist is an additional authorization check after
+Google verifies the account.
+
 Start Luna Visia:
 
 ```sh
@@ -128,7 +154,7 @@ Open:
 - Favicon and icons: <http://127.0.0.1:18000/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
 - MCP endpoint: <http://127.0.0.1:18000/mcp>
 
-The built-in development credentials work without creating a `.env` file:
+The example keeps these development defaults:
 
 | Setting | Default |
 | --- | --- |
@@ -137,14 +163,15 @@ The built-in development credentials work without creating a `.env` file:
 | Password | `lunavisia-dev` |
 | Database host inside Docker | `luna-visia-db` |
 
-Environment overrides remain available when needed, but they are not required for local development.
+The API token and Google-account allowlist have no defaults and must be set in
+`.env` before Compose starts the application.
 
 Docker is not started automatically by repository setup or validation.
 
 Compose automatically pulls the configured vision model into the persistent
 `ollama_data` volume before starting MCP. Open Luna Visia at
-<http://127.0.0.1:18501>. The Hidden Images tab lets you create a password and an
-exactly 8-digit reset PIN; both are salted and hashed in PostgreSQL.
+<http://127.0.0.1:18501>. After signing in with an allowlisted Google account,
+the Hidden Images tab opens directly without another password or PIN prompt.
 
 Check GPU use while analysis is active:
 
@@ -227,7 +254,8 @@ Luna Visia exposes these tools to connected MCP clients:
 
 - `set_public_base_url` - update the optional persisted public base URL and regenerate stored image URLs.
 
-Hidden-vault password and session endpoints are UI-only custom routes, not MCP tools.
+Hidden Images routes are UI-only custom routes protected by the private
+`LUNAVISIA_API_TOKEN`; hidden images are not exposed as MCP tools.
 
 ## Metadata and search
 
@@ -259,7 +287,8 @@ The filename remains the storage key matching the image in the persistent `image
 
 ### `vault_security`
 
-Stores the hidden vault's singleton security record: password salt and hash, reset-PIN salt and hash, PBKDF iteration count, and update timestamp. Plaintext passwords and reset PINs are never stored.
+Legacy hidden-vault credential data may remain in upgraded databases for
+compatibility, but the OAuth-gated Hidden Images UI no longer reads or updates it.
 
 ### `vault_config`
 
@@ -329,9 +358,9 @@ change so the client refreshes its discovered tool catalog.
 ### UI modules
 
 - `ui/app.py` - `LunaVisiaApp` composition root: header, `GalleryNavigation`, and the upload dialog; each section is a tab class.
-- `ui/services/api.py` - `LunaVisiaAPI` keeps backend routes, the Hidden Vault token header, timeouts, and error text out of the views.
-- `ui/config.py` - `UIConfig` reads UI environment settings such as the image directory, API URL, gallery size, and supported image formats.
-- `ui/services/state.py` - `SessionState` owns session-state defaults and cross-view transitions (pending delete/hide, gallery refresh, Hidden Vault token).
+- `ui/services/api.py` - `LunaVisiaAPI` keeps backend routes, the private service credential, timeouts, and error text out of the views.
+- `ui/config.py` - `UIConfig` reads UI environment settings such as the API URL, API token, allowed Google accounts, image directory, gallery size, and supported image formats.
+- `ui/services/state.py` - `SessionState` owns session-state defaults and cross-view transitions such as pending delete/hide and gallery refresh.
 - `ui/services/images.py` - `ImageFiles` (vault file listing and cached thumbnails, previews, and size facts) and `ImageCollection` (files plus metadata, search filtering).
 - `ui/styles.py` - `LunaStyle` maintains the shared dark visual system, component spacing, and control styling.
 - `ui/views/shared.py` - `VisiaContext` (shared dependencies), `VisiaTab` base class, `ResponsiveLayout`, `SearchFilter`, and `ImageLabel`.
@@ -339,7 +368,7 @@ change so the client refreshes its discovered tool catalog.
 - `ui/views/actions.py` - `GalleryActions`, `FavoriteActions`, and `HiddenActions`: what each section's gallery may do with an image.
 - `ui/views/pager.py` - `GalleryPager`, pagination with the animated page transition.
 - `ui/views/preview_dialog.py` - `ImagePreviewDialog`, full-size viewing with inline caption and tag editing.
-- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; `hidden_tab.py` also holds `HiddenAccessGate` (setup, unlock, reset).
+- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; all are rendered only after the shared OAuth gate.
 - `ui/views/upload_dialog.py` - `UploadDialog`: upload handling, progress feedback, retries, and newly generated captions and tags.
 - `ui/views/__init__.py`, `ui/services/__init__.py` - mark the view and service directories as Python packages.
 - `ui/.streamlit/config.toml` - Streamlit theme settings.
@@ -350,9 +379,9 @@ change so the client refreshes its discovered tool catalog.
 
 - `mcp/app/main.py` - `LunaVisiaApplication` composition root: builds the database, repositories, services, and server, then runs it.
 - `mcp/app/mcp_tools.py` - `VisiaMCPTools`, the public MCP image-management tools (hidden images are never reachable here).
-- `mcp/app/http_routes.py` - `VisiaHTTPRoutes`, the REST routes used by the UI and public image links, with uniform error translation and Hidden Vault session checks.
+- `mcp/app/http_routes.py` - `VisiaHTTPRoutes`, the REST routes used by the UI and public image links, with uniform error translation and service-token checks for Hidden Images.
 - `mcp/app/services.py` - use cases: `VisibleImageService` and `HiddenImageService` (sharing `ImageCollectionService`), `ImageIndexer` (analysis and backfill), `SearchService`, `PublicURLService`, and the `VisiaService` facade.
-- `mcp/app/repositories.py` - PostgreSQL persistence: `ImageRepository`, `PublicURLRepository`, and `CredentialRepository`.
+- `mcp/app/repositories.py` - PostgreSQL persistence for image metadata, public URLs, and legacy hidden-vault credentials.
 - `mcp/app/database.py` - `Database` connection handling and the idempotent schema.
 - `mcp/app/storage.py` - `ImageStorage`, safe vault paths plus write, rename, and delete operations that roll back if metadata persistence fails.
 - `mcp/app/media.py` - upload byte validation, chat previews and contact sheets, and `ImageArchive` (uncompressed ZIPs with original filenames).
@@ -362,7 +391,8 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/app/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
 - `mcp/app/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
 - `mcp/app/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.
-- `mcp/app/security.py` - `HiddenVaultAuth` with `CredentialPolicy` (password/PIN validation and hashing) and `SessionStore` (in-memory sessions).
+- `mcp/app/auth.py` - constant-time bearer authentication for OAuth-gated UI requests to Hidden Images routes.
+- `mcp/app/security.py` - legacy password/PIN authentication retained only for database compatibility and migration history.
 - `mcp/app/config.py` - reads and validates MCP settings, including database, image, Ollama, and vision-model configuration.
 - `mcp/app/__init__.py` - marks the MCP application directory as a Python package.
 - `mcp/tests/` - automated tests for the services, MCP tools, HTTP routes, media helpers, and security safeguards, using in-memory fakes from `fakes.py`.
