@@ -431,6 +431,27 @@ class LunaStyle:
                 .st-key-gallery_navigation div[data-testid="stButtonGroup"] button span[data-testid="stIconMaterial"],
                 .st-key-gallery_navigation div[data-testid="stButtonGroup"] button .material-symbols-rounded { font-size:1.25rem!important; line-height:1!important; }
             }
-            </style>
+                        /* mobile-sign-out-icon */
+            @media (max-width:700px) {
+                .st-key-header_sign_out,.st-key-header_sign_out .stButton { width:2.625rem!important; min-width:2.625rem!important; }
+                .st-key-header_sign_out button { width:2.625rem!important; min-width:2.625rem!important; padding:0!important; }
+                .st-key-header_sign_out button p { display:none!important; }
+                .st-key-header_sign_out button span[data-testid="stIconMaterial"] { margin:0!important; }
+                /* mobile-header-action-row */
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) { flex-wrap:nowrap!important; align-items:center!important; width:100%!important; }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:nth-child(1),
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:nth-child(2) { flex:0 0 4.25rem!important; width:4.25rem!important; min-width:4.25rem!important; }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:nth-child(3) { flex:1 1 auto!important; width:auto!important; min-width:0!important; }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:nth-child(4) { flex:0 0 2.625rem!important; width:2.625rem!important; min-width:2.625rem!important; }
+                .st-key-open_upload_dialog,.st-key-open_upload_dialog .stButton,.st-key-open_upload_dialog button { width:100%!important; min-width:0!important; }
+                /* mobile-visia-header-columns */
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:has(.st-key-use_grid_view),
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:has(.st-key-use_list_view) { flex:0 0 3.25rem!important; width:3.25rem!important; min-width:3.25rem!important; max-width:3.25rem!important; }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:has(.st-key-open_upload_dialog) { flex:1 1 0!important; width:auto!important; min-width:0!important; max-width:none!important; }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-header_sign_out):not(:has(.lv-header)) > div[data-testid="stColumn"]:has(.st-key-header_sign_out) { flex:0 0 2.625rem!important; width:2.625rem!important; min-width:2.625rem!important; max-width:2.625rem!important; }
+                .st-key-open_upload_dialog button { overflow:hidden!important; padding-inline:.55rem!important; gap:.35rem!important; }
+                .st-key-open_upload_dialog button p { overflow:hidden!important; text-overflow:ellipsis!important; white-space:nowrap!important; }
+                .st-key-header_sign_out button { gap:0!important; overflow:hidden!important; }
+            }</style>
             """,
         )
