@@ -102,7 +102,7 @@ class LunaVisiaApp:
         """Render the branded header and view controls; return True to open uploads.
 
         Nothing that creates a layout block may render before this header; see
-        UI_STYLE_GUIDE.md ("Luna Visia header-position invariant").
+        UI_STYLE_GUIDE.md ("Header-position invariant").
         """
         view_mode = st.session_state.gallery_view_mode
         brand_column, buttons_column = st.columns([5, 4], vertical_alignment="center", gap="medium")

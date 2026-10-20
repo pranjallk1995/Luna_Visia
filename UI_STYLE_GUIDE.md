@@ -1,137 +1,116 @@
 # Luna UI style guide
 
-Shared visual reference for Luna Visia, Luna Vita, and Luna Lumia.
+Shared visual reference for Luna Visia, Luna Vita, and Luna Lumia. This file is
+identical in all three repositories. Any change goes into all three copies at
+the same time.
+
+Luna Visia is the reference implementation. When this guide and the code
+disagree, check this guide first, fix the code to match it, and record any
+intended exception under [Known deviations](#known-deviations).
 
 ## Color palette
 
-| Role | Color |
-| --- | --- |
-| Background | `#111111` |
-| Surface / panel | `rgba(255, 255, 255, 0.055)` |
-| Control | `rgba(255, 255, 255, 0.07)` |
-| Control hover | `rgba(255, 255, 255, 0.12)` |
-| Primary text | `#f5f5f5` |
-| Muted text | `#a3a3a3` |
-| Border | `rgba(255, 255, 255, 0.14)` |
-| Strong border | `rgba(255, 255, 255, 0.34)` |
-| Accent | `#f5f5f5` |
-| Accent surface | `rgba(255, 255, 255, 0.09)` |
+| Role | Color | Visia / Lumia variable | Vita variable |
+| --- | --- | --- | --- |
+| Background | `#111111` | `--lv-bg` | `--bg` |
+| Surface / panel | `rgba(255, 255, 255, 0.055)` | `--lv-surface` | `--panel` |
+| Control | `rgba(255, 255, 255, 0.07)` | `--lv-control` | `--control` |
+| Control hover | `rgba(255, 255, 255, 0.12)` | `--lv-control-hover` (Lumia: `--lv-hover`) | `--control-hover` |
+| Primary text | `#f5f5f5` | `--lv-text` | `--text` |
+| Muted text | `#a3a3a3` | `--lv-muted` | `--muted` |
+| Border | `rgba(255, 255, 255, 0.14)` | `--lv-border` | `--border` |
+| Strong border | `rgba(255, 255, 255, 0.34)` | `--lv-strong` | `--strong` |
+| Accent | `#f5f5f5` | `--lv-accent` | `--accent` |
+| Accent surface | `rgba(255, 255, 255, 0.09)` | `--lv-soft` | `--soft` |
 
-The header subtitle uses the muted text color. Titles, selected controls, and
-important foreground content use the primary text color.
+The header subtitle uses the muted text color. Titles and important foreground
+content use the primary text color. New apps use the `--lv-*` names.
+
+Luna Visia also has a light theme. It changes only these variables; layout and
+geometry stay the same in both themes.
 
 ## Typography scale
 
-| Role | Size |
-| --- | --- |
-| App title | `clamp(1.65rem, 3vw, 2.15rem)` |
-| Header subtitle | `0.78rem` (`--luna-text-subtitle`) |
-| Body text | `0.88rem` |
-| Supporting text / labels | `0.72rem` |
+| Role | Size | Variable |
+| --- | --- | --- |
+| App title | `clamp(1.65rem, 3vw, 2.15rem)` | `--luna-text-title` |
+| Header subtitle | `0.78rem` | `--luna-text-subtitle` |
+| Body text | `0.88rem` | `--luna-text-body` |
+| Supporting text / labels | `0.72rem` | `--luna-text-small` |
 
-The shared font weights are `720` for the app title and `400` for the header
-subtitle. Luna typography variables use the `--luna-text-*` prefix to avoid
-collisions with framework theme variables.
+The app title uses weight `720`, letter spacing `-.04em` and line height `1`.
+The subtitle uses weight `400` and the muted color. Luna typography variables
+use the `--luna-text-*` prefix to avoid clashing with Streamlit's theme
+variables.
 
 ## Logo assets
 
 | App | Asset | Format | Resolution | File size | Desktop display | Mobile display |
 | --- | --- | --- | --- | --- | --- | --- |
 | Luna Visia | `ui/assets/lunavisia_logo.png` | PNG, 8-bit RGBA | 1254 x 1254 px | 616,506 bytes | 5.75rem x 4.5rem | 4rem x 3.4rem |
+| Luna Vita | `ui/assets/lunavita_logo.png` | PNG, 8-bit RGBA | 1254 x 1254 px | 637,054 bytes | 5.75rem x 4.5rem | 4.25rem x 3.5rem |
+| Luna Lumia | `ui/assets/lunalumia_logo.png` | PNG, 8-bit RGBA | 1254 x 1254 px | 577,562 bytes | 5.75rem x 4.5rem | 4.25rem x 3.5rem |
 
-Logos render with `object-fit: contain` so their square source images keep
-their aspect ratio within the header bounds.
+Logos are embedded as base64 `data:` URIs in an `<img class="lv-mark">` and
+render with `object-fit: contain`, so the square source keeps its aspect ratio
+inside the header box. If a logo file is missing, Lumia renders a
+`.lv-placeholder` of the same size instead; other apps should do the same rather
+than collapse the header.
 
-## Luna Visia header-position invariant
+## Header
 
-The Luna Visia desktop header has a deliberately fixed vertical position. In
-`ui/styles.py`, keep the main container at:
+The header is the part of the shell that must look identical across apps. Only
+the logo, title, subtitle, and the controls in the right column change per app.
 
-```css
-.block-container {
-    max-width: 1180px;
-    padding-top: 2.35rem;
-    padding-bottom: 3rem;
-}
-```
+### Structure
 
-The mobile override remains `padding: 0.85rem 0.8rem 2rem` below `700px`.
-Do not adjust either value indirectly with spacer elements, empty Markdown,
-negative margins, transforms, or invisible components.
+Every app renders, in this order and with nothing in between:
 
-### Why this matters
+1. **Style injection** with `st.html(...)`. It creates no visible layout block.
+2. **Header row:** `st.columns([5, 4], vertical_alignment="center", gap="medium")`.
+3. **Left column:** exactly one `.lv-header` block:
 
-Streamlit components create layout wrappers even when their iframe height is
-zero. A hidden `component_html` popover-dismiss script was previously rendered
-before the Visia header and repeatedly pushed the logo, title, and controls
-down. Removing that component made the real header position deterministic; the
-explicit `2.35rem` desktop padding then aligned it with the intended Luna
-layout.
+   ```html
+   <div class="lv-header">
+       <img class="lv-mark" src="data:image/png;base64,..." alt="Luna <App> logo">
+       <div>
+           <h1 class="lv-title">Luna <App></h1>
+           <p class="lv-subtitle">Private AI-managed <what the app does></p>
+       </div>
+   </div>
+   ```
 
-### Rules for future changes
+   The subtitle always follows the pattern "Private AI-managed …" (image
+   storage, nutrition tracking, smart lighting).
 
-- Before `LunaVisiaApp.render_header()` runs, inject CSS only with `st.html(...)`, which
-  does not create a visible layout block.
-- Vita and Lumia must use the same `2.35rem` desktop container top padding as
-  Visia. Keep Vita's header row intrinsic, matching Visia; forcing a fixed row
-  height pushes its navigation down. Lumia's tabs do not have the segmented-
-  control wrapper used by Visia, so their desktop tab-list top margin is
-  `1.2rem` to preserve the same on-screen navigation baseline.
-- Keep Vita's navigation in normal document flow. Do not apply `top`,
-  `transform`, or negative-margin corrections to
-  `.st-key-nutrition_navigation`; those corrections render the navbar too high
-  in the user's browser even when a headless measurement suggests otherwise.
-- Do not add invisible date, power, or navigation anchor elements inside the
-  header columns; Streamlit still allocates vertical gap around their wrappers.
-- Never place `st.container`, `st.markdown`, `st.empty`, `component_html`, or
-  another layout-producing element before the header.
-- If JavaScript behavior is required, do not mount it ahead of the header.
-  Place it after the visible page content or implement it without a Streamlit
-  layout wrapper.
-- Preserve `.lv-header` at `min-height: 4.5rem`, the desktop logo at
-  `5.75rem × 4.5rem`, and vertical centering on the containing horizontal block.
-- Do not compensate for a new regression by repeatedly changing margins or
-  padding. First inspect the render path for an unexpected element before the
-  header.
-- After changing header or global styling, verify both the source and the live
-  container copy. Compose Watch must be running for automatic propagation;
-  otherwise rebuild/recreate only the Visia UI container before visual review.
+4. **Right column:** the app's header controls (see below).
+5. **Primary navbar,** full width, directly below the header row.
 
-### Regression checklist
+### Right-column controls
 
-1. The logo and title begin at the established desktop height.
-2. The logo, title, subtitle, and header controls remain vertically centered.
-3. No empty element or iframe appears above the header in the Streamlit layout.
-4. Mobile keeps the logo and title on one line and uses the mobile padding.
-5. A hard refresh produces the same position as a normal Streamlit rerun.
+The right column holds the app's main controls, ending with **Sign out**:
 
-## Shared Luna app-shell contract
+| App | Controls, left to right |
+| --- | --- |
+| Luna Visia | Grid view, List view, **Upload Images** (primary), Sign out. Nested columns `[1, 1, 3, 2]`. |
+| Luna Vita | Log date picker, Sign out. Nested columns `[3, 2]`. |
+| Luna Lumia | Refresh lights (icon only), **Turn all on / off** (primary), Sign out. Horizontal container `header_actions`. |
 
-Luna Visia is the canonical visual reference for every Luna app. Luna Vita,
-Luna Lumia, and future apps must use the same app-shell geometry and interaction
-language. Product-specific content begins below the navbar; the shell above it
-must not be redesigned per app.
+Shared rules:
 
-### Required shell structure
+- **Sign out** is always the last control. It is `st.button("Sign out",
+  icon=":material/logout:", key="header_sign_out", on_click=st.logout)`. The key
+  must be exactly `header_sign_out`, because the mobile CSS targets it.
+- The app's main action is the widest control and uses `type="primary"`.
+- Icon-only buttons (view toggles, refresh) use a Material icon and no label.
+- Every control is at least `2.625rem` tall, uses the control background, a
+  `.65rem` radius, and `white-space: nowrap`. Buttons in the header row stretch
+  to their column (`width="stretch"` or `use_container_width=True`).
+- Do not move controls with manual offsets or spacer elements.
 
-Every desktop app renders these elements in this order:
+### Desktop geometry
 
-1. A two-column header created with `st.columns([5, 4],
-   vertical_alignment="center", gap="medium")`.
-2. The left column contains one `.lv-header` with the app logo, title, and
-   subtitle.
-3. The right column contains the app's main control: Visia's upload/view
-   console, Vita's date control, Lumia's all-lights power control, or the
-   equivalent primary console in a future app.
-4. The full-width primary navbar immediately follows the header row.
-
-Do not insert Markdown spacers, empty containers, hidden anchors, iframe
-components, or status elements between these parts. Even invisible Streamlit
-elements can add vertical layout gaps.
-
-### Header and branding geometry
-
-Use these desktop values unchanged:
+Use these values unchanged:
 
 ```css
 .block-container {
@@ -154,35 +133,96 @@ div[data-testid="stHorizontalBlock"]:has(.lv-header) {
 }
 
 .lv-mark {
+    display: block;
     flex: 0 0 5.75rem;
     width: 5.75rem;
     height: 4.5rem;
     object-fit: contain;
+    object-position: center;
+}
+
+.lv-title {
+    margin: 0;
+    color: var(--lv-text);
+    font-size: var(--luna-text-title);
+    font-weight: 720;
+    letter-spacing: -.04em;
+    line-height: 1;
+}
+
+.stApp .lv-subtitle {
+    margin: .32rem 0 0;
+    color: var(--lv-muted);
+    font-size: var(--luna-text-subtitle);
+    font-weight: 400;
 }
 ```
 
-The app title uses `--luna-text-title`, weight `720`, letter spacing `-.04em`,
-and line height `1`. The subtitle uses `--luna-text-subtitle` (`.78rem`), weight
-`400`, and the muted color. Logo, title, subtitle, and the right-side console
-must remain vertically centered as a single header row.
+Keep the header row's height intrinsic. A fixed row height pushes the navbar
+down. The logo, title, subtitle and right-column controls stay vertically
+centred as one row.
 
-### Right-side main console
+Hide Streamlit's own chrome in every app: a transparent
+`header[data-testid="stHeader"]`, and `display: none` on `#MainMenu`, `footer`
+and `div[data-testid="stDecoration"]`.
 
-The right-side control occupies the complete second header column. A single
-button, date field, or console surface must stretch to the column width and use
-a minimum height of `2.625rem`. Use the shared control background, strong border
-for emphasis, `.65rem` control radius, and the same Luna typography as the
-navbar. Do not position this console with manual offsets or independent spacer
-elements.
+### Mobile geometry (max-width: 700px)
 
-On mobile, both header columns become full width. The brand stays on one line;
-the main console moves below it and remains full width.
+```css
+.block-container { padding: .85rem .8rem 2rem; }
 
-### Navbar location and geometry
+/* Header columns stack: brand on top, controls below, both full width. */
+div[data-testid="stHorizontalBlock"]:has(.lv-header) { flex-wrap: wrap !important; }
+div[data-testid="stHorizontalBlock"]:has(.lv-header) > div[data-testid="stColumn"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+}
 
-The navbar must begin at the same rendered Y coordinate as Luna Visia at the
-same viewport size, browser zoom, and root font size. It is full container
-width and uses equal-width items. The canonical surface is:
+/* Brand stays on one line; the subtitle is hidden. */
+.lv-header { flex-wrap: nowrap !important; gap: .65rem; min-width: 0; }
+.lv-header > div { min-width: 0; flex: 1 1 auto; }
+.lv-title { white-space: nowrap; }
+.lv-subtitle { display: none; }
+
+/* Sign out collapses to an icon-only square. */
+.st-key-header_sign_out,
+.st-key-header_sign_out .stButton { width: 2.625rem !important; min-width: 2.625rem !important; }
+.st-key-header_sign_out button { width: 2.625rem !important; min-width: 2.625rem !important; padding: 0 !important; }
+.st-key-header_sign_out button p { display: none !important; }
+.st-key-header_sign_out button span[data-testid="stIconMaterial"] { margin: 0 !important; }
+```
+
+The control row below the brand stays on a single line
+(`flex-wrap: nowrap`): the main control flexes to fill the space, icon-only
+buttons keep a fixed width, and Sign out is a fixed `2.625rem` square on the
+right. The mobile logo size and title clamp are listed per app under
+[Logo assets](#logo-assets) and [Known deviations](#known-deviations).
+
+### Header-position invariant
+
+The header's vertical position is fixed by the `2.35rem` top padding alone.
+
+Streamlit wraps components in layout blocks even when their height is zero. A
+hidden `component_html` script once rendered before the Visia header and
+pushed the logo, title and controls down on every rerun. Removing it made the
+header position predictable again. To keep it that way:
+
+- Before the header renders, inject CSS only with `st.html(...)`.
+- Never place `st.container`, `st.markdown`, `st.empty`, `component_html` or any
+  other layout-producing element before the header.
+- Do not add invisible anchors (date, power, navigation markers) inside the
+  header columns. Streamlit still adds vertical gaps around their wrappers.
+- If JavaScript is needed, mount it after the visible page content.
+- Do not fix a position regression by nudging margins or padding, or with
+  `top`, `transform`, negative margins or spacer elements. First look for an
+  unexpected element rendered before the header.
+
+## Primary navbar
+
+The navbar starts at the same on-screen position in every app at the same
+viewport size, zoom and root font size. It is full width with equal-width items.
+
+Canonical surface:
 
 ```css
 gap: .2rem;
@@ -193,46 +233,86 @@ border-radius: .9rem;
 background: var(--lv-surface);
 ```
 
-Each item has a minimum height of `2.55rem`, a `.65rem` radius, and no default
-Streamlit box shadow. Use Material icons followed by the label. Tabs,
-segmented controls, and buttons create different internal wrappers, so a future
-app should reuse Visia's segmented-control structure where possible. If another
-widget is required, normalize its wrapper spacing rather than moving the
-navbar with `top`, `transform`, negative margins, or invisible anchors.
+Each item is at least `2.55rem` tall, has a `.65rem` radius and no default
+Streamlit shadow, and shows a Material icon followed by its label. On mobile,
+labels are hidden and icons are shown at `1.25rem`.
 
-### Navbar typography and states
+| App | Widget | Container key |
+| --- | --- | --- |
+| Luna Visia | `st.segmented_control` | `gallery_navigation` |
+| Luna Vita | `st.segmented_control` | `nutrition_navigation` |
+| Luna Lumia | `st.tabs` | (none) |
 
-All navbar labels and Material icons use the same muted foreground color in
-every state. Selection and hover must never make the label brighter or whiter.
-Communicate state through the surface and border only.
+Prefer the segmented control. Tabs use different internal wrappers, so Lumia's
+tab list uses a `1.2rem` top margin instead of `.2rem` to land on the same
+on-screen baseline. Do not move a navbar with `top`, `transform`, negative
+margins or invisible anchors.
 
-- Default: control background, transparent item border, muted icon and label.
-- Selected: hover/control surface, strong `1px` border, subtle shared border
-  ring, muted icon and label.
-- Hover: hover/control surface, strong border, and `translateY(-1px)` with a
-  `140ms` border/background/transform transition; icon and label stay muted.
-- Focus: retain an accessible visible outline without changing the text color.
+### States
 
-Apply the muted color to the button/tab itself and all nested `p`, `span`,
-Material-icon, and `svg` nodes with sufficient selector specificity. Streamlit
-often applies its primary foreground color to nested nodes, so styling only the
-outer control is not enough.
+Labels and icons stay muted in every state. State is shown through the surface
+and border only.
 
-### Fourth-app implementation checklist
+- **Default:** control background, transparent border, muted icon and label.
+- **Selected:** control-hover background, `1px` strong border, a `0 0 0 1px`
+  border-colour ring, muted icon and label.
+- **Hover:** control-hover background, strong border, `translateY(-1px)`, and a
+  `140ms` transition on border, background and transform. Icon and label stay
+  muted.
+- **Focus:** a visible outline for keyboard users, with no colour change.
 
-1. Copy the app-shell variables and structural CSS from Visia before building
-   product-specific pages.
-2. Use the same `[5, 4]` header columns, `.lv-header` markup, logo box, title,
-   subtitle, and full-width right-side console.
-3. Reuse Visia's full-width segmented navigation when technically possible;
-   change only the labels, Material icons, state keys, and selected markers.
-4. Keep shell CSS in one style module and render it with `st.html(...)` before
-   the header, without creating a layout-producing wrapper.
-5. Compare all Luna apps at the same viewport width and 100% zoom. Measure the
-   navbar's bounding-box `top`, `left`, and `width`; all apps should agree to
+Apply the muted colour to the item and to every nested `p`, `span`, Material
+icon and `svg`, with `-webkit-text-fill-color` as well. Streamlit sets its own
+colour on nested nodes, so styling only the outer element is not enough.
+
+## Known deviations
+
+These are differences in the code today. Each should either be fixed to match
+this guide or deliberately accepted here.
+
+| App | Deviation | Guide says |
+| --- | --- | --- |
+| Visia, Vita | Selected and hovered navbar labels turn to primary text (`--lv-text` / `--text`). | Labels stay muted in every state. |
+| Lumia | Header row has a fixed `height: 5.5rem` (and `min-height`). | Header row height is intrinsic. |
+| Lumia | Sign out is a fixed `7rem` wide on desktop instead of stretching to a column. | Header buttons stretch to their column. |
+| Lumia | Navbar item gap is `.35rem`. | `.2rem`. |
+| Vita, Lumia | Mobile logo `4.25rem x 3.5rem`, title `clamp(1.55rem, 8vw, 2rem)`. | Visia uses `4rem x 3.4rem`, `clamp(1.55rem, 8vw, 1.85rem)`. Pick one for all three. |
+| Vita | Colour variables use short names (`--text`, `--panel` …). | `--lv-*` names. |
+| Lumia | Control-hover variable is `--lv-hover`. | `--lv-control-hover`. |
+
+## Checklists
+
+### After any header or shell change
+
+1. The logo and title start at the established desktop height.
+2. Logo, title, subtitle and right-column controls stay vertically centred.
+3. Nothing (empty element, iframe) renders above the header.
+4. On mobile, the brand stays on one line, the subtitle is hidden, the control
+   row stays on one line, and Sign out is an icon-only square.
+5. A hard refresh gives the same position as a normal Streamlit rerun.
+6. Check both the source and the running container. Compose Watch must be
+   running for changes to reach the container; otherwise rebuild that app's UI
+   container before reviewing.
+
+### Before approving a shell change across apps
+
+1. Open all three apps at the same viewport width and 100% zoom.
+2. Measure the navbar's bounding-box `top`, `left` and `width`; they agree to
    within one device pixel.
-6. Verify default, selected, hover, keyboard-focus, normal rerun, hard refresh,
-   and mobile states. Do not approve the shell from a static source review
-   alone.
-7. Record any deliberate shared-shell change here first, then apply and verify
-   it across every Luna app together.
+3. Check default, selected, hover, keyboard-focus, rerun, hard-refresh and
+   mobile states. Do not approve from a source review alone.
+4. Update this guide first, then apply the change to all three apps together.
+
+### Adding a new Luna app
+
+1. Copy the shell variables and structural CSS from Visia before building
+   product pages.
+2. Use the `[5, 4]` header columns, `.lv-header` markup, logo box, title and
+   "Private AI-managed …" subtitle.
+3. Put the app's main action in the right column as a primary button, followed
+   by Sign out with key `header_sign_out`.
+4. Use a full-width segmented control for the navbar; change only labels,
+   icons and keys.
+5. Keep shell CSS in one style module, injected with `st.html(...)` before the
+   header.
+6. Add the app to the tables in this guide and copy the guide into every repo.
