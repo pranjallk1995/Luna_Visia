@@ -72,6 +72,8 @@ class AppConfig:
             "with",
         }
     )
+    # Public HTTPS origin of this MCP server, used for icon URLs ("" = embedded icons only).
+    mcp_public_url: str = ""
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -101,7 +103,13 @@ class AppConfig:
         api_token = os.getenv("LUNAVISIA_API_TOKEN", "").strip()
         if len(api_token) < 32:
             raise RuntimeError("LUNAVISIA_API_TOKEN must contain at least 32 characters.")
+        mcp_public_url = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
+        if mcp_public_url:
+            parsed_public_url = urlparse(mcp_public_url)
+            if parsed_public_url.scheme != "https" or not parsed_public_url.netloc:
+                raise RuntimeError("MCP_PUBLIC_URL must be a valid HTTPS URL.")
         return cls(
+            mcp_public_url=mcp_public_url,
             image_dir=image_dir,
             database_url=database_url,
             ollama_url=ollama_url,

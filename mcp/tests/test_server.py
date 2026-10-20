@@ -544,6 +544,22 @@ class BrandingTests(ServerTestCase):
             for name in ("icon-1.png", "favicon.ico", "..%2Fbranding.py"):
                 self.assertNotEqual(client.get(f"/icons/{name}").status_code, 200)
 
+    def test_home_page_links_the_icons(self) -> None:
+        with self.client() as client:
+            page = client.get("/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("text/html", page.headers["content-type"])
+        self.assertIn('href="/icons/icon-192.png"', page.text)
+        self.assertIn('href="/favicon.ico"', page.text)
+
+    def test_public_url_icons_are_listed_before_embedded_ones(self) -> None:
+        icons = ServerBranding("https://mcp.example.com/").mcp_icons()
+        self.assertEqual(
+            [icon.src for icon in icons[:4]],
+            [f"https://mcp.example.com/icons/icon-{size}.png" for size in ServerBranding.ICON_SIZES],
+        )
+        self.assertTrue(icons[4].src.startswith("data:image/png;base64,"))
+
     def test_initialize_advertises_server_icons(self) -> None:
         request = {
             "jsonrpc": "2.0",

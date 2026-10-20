@@ -32,7 +32,7 @@ class LunaVisiaApplication:
                 MetadataRules(config.max_tags, config.search_stop_words),
             ),
         )
-        self.branding = ServerBranding()
+        self.branding = ServerBranding(config.mcp_public_url)
         self.mcp = FastMCP(
             "Luna Visia", host=config.host, port=config.port, icons=self.branding.mcp_icons()
         )
