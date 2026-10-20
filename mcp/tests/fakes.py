@@ -9,8 +9,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from app.models import ImageAnalysis
-from app.repositories import PUBLIC_IMAGE_PATH
+from app.core.models import ImageAnalysis
+from app.data.repositories import PUBLIC_IMAGE_PATH
 
 
 class FakeImageRepository:

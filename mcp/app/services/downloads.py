@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .media import ImageArchive
+from app.services.media import ImageArchive
 
 
 @dataclass(frozen=True)

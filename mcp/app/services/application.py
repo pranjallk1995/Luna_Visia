@@ -9,14 +9,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from .config import AppConfig
-from .downloads import DownloadStore, DownloadTicket
-from .media import ImagePayloadDecoder, PreviewRenderer
-from .models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
-from .repositories import ImageRepository, PublicURLRepository, Row
-from .storage import ImageStorage
-from .uploads import UploadLinkStore
-from .vision import OllamaVisionAnalyzer
+from app.core.config import AppConfig
+from app.services.downloads import DownloadStore, DownloadTicket
+from app.services.media import ImagePayloadDecoder, PreviewRenderer
+from app.core.models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
+from app.data.repositories import ImageRepository, PublicURLRepository, Row
+from app.data.storage import ImageStorage
+from app.services.uploads import UploadLinkStore
+from app.integrations.vision import OllamaVisionAnalyzer
 
 
 # The compact view of an image returned to LLM clients when listing or searching.

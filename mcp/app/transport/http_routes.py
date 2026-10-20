@@ -8,11 +8,11 @@ from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 
-from .branding import ServerBranding
-from .auth import APIAuthenticator
-from .models import MetadataChange
-from .services import VisiaService
-from .uploads import UploadLinkNotFound
+from app.transport.branding import ServerBranding
+from app.transport.auth import APIAuthenticator
+from app.core.models import MetadataChange
+from app.services.application import VisiaService
+from app.services.uploads import UploadLinkNotFound
 
 Handler = Callable[[Request], Awaitable[Any]]
 class VisiaHTTPRoutes:

@@ -7,9 +7,9 @@ import anyio
 from mcp.server.fastmcp import FastMCP, Image as MCPImage
 from pydantic import BaseModel, ConfigDict, WithJsonSchema
 
-from .models import MetadataChange, MetadataRules
-from .remote import ImageSourceResolver
-from .services import VisiaService
+from app.core.models import MetadataChange, MetadataRules
+from app.integrations.remote import ImageSourceResolver
+from app.services.application import VisiaService
 
 Result = TypeVar("Result")
 

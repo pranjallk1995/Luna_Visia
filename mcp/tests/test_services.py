@@ -17,11 +17,11 @@ from fakes import (
     png_payload,
 )
 
-from app.config import AppConfig
-from app.models import MetadataChange, MetadataRules
-from app.services import VisiaService
-from app.uploads import UploadLinkNotFound
-from app.vision import OllamaVisionAnalyzer
+from app.core.config import AppConfig
+from app.core.models import MetadataChange, MetadataRules
+from app.services.application import VisiaService
+from app.services.uploads import UploadLinkNotFound
+from app.integrations.vision import OllamaVisionAnalyzer
 
 
 class VisiaServiceTestCase(unittest.TestCase):

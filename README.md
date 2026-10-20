@@ -294,9 +294,18 @@ compatibility, but the OAuth-gated Hidden Images UI no longer reads or updates i
 
 Stores the singleton optional public base URL used to generate immutable-ID image URLs. Updating the origin refreshes each URL without changing its image ID or filename.
 
-The idempotent schema in `mcp/app/database.py` runs when the MCP service starts and applies additive upgrades for existing installations.
+The idempotent schema in `mcp/app/data/database.py` runs when the MCP service starts and applies additive upgrades for existing installations.
 
 ## Project structure
+
+The backend follows the same layered package layout across all three Luna apps:
+
+- `mcp/app/core/` - configuration, validation models, and domain primitives.
+- `mcp/app/data/` - database setup, repositories, and storage adapters.
+- `mcp/app/services/` - transport-independent use cases and orchestration.
+- `mcp/app/integrations/` - external services, devices, and peer-app clients.
+- `mcp/app/transport/` - FastMCP tools, HTTP routes, authentication, and branding.
+- `mcp/app/main.py` - the small composition root that wires the layers together.
 
 Luna Vita, Luna Lumia, and Luna Visia share this layout:
 
@@ -378,22 +387,22 @@ change so the client refreshes its discovered tool catalog.
 ### MCP modules
 
 - `mcp/app/main.py` - `LunaVisiaApplication` composition root: builds the database, repositories, services, and server, then runs it.
-- `mcp/app/mcp_tools.py` - `VisiaMCPTools`, the public MCP image-management tools (hidden images are never reachable here).
-- `mcp/app/http_routes.py` - `VisiaHTTPRoutes`, the REST routes used by the UI and public image links, with uniform error translation and service-token checks for Hidden Images.
-- `mcp/app/services.py` - use cases: `VisibleImageService` and `HiddenImageService` (sharing `ImageCollectionService`), `ImageIndexer` (analysis and backfill), `SearchService`, `PublicURLService`, and the `VisiaService` facade.
-- `mcp/app/repositories.py` - PostgreSQL persistence for image metadata, public URLs, and legacy hidden-vault credentials.
-- `mcp/app/database.py` - `Database` connection handling and the idempotent schema.
-- `mcp/app/storage.py` - `ImageStorage`, safe vault paths plus write, rename, and delete operations that roll back if metadata persistence fails.
-- `mcp/app/media.py` - upload byte validation, chat previews and contact sheets, and `ImageArchive` (uncompressed ZIPs with original filenames).
-- `mcp/app/downloads.py` - `DownloadStore`, short-lived ZIP archives behind unguessable `/api/downloads/{token}` links.
-- `mcp/app/remote.py` - `ImageSourceResolver` for chat file references, Base64, data URLs, and SSRF-guarded HTTPS upload sources.
-- `mcp/app/uploads.py` - `UploadLinkStore`, single-use upload tickets behind `/api/uploads/{token}`.
-- `mcp/app/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
-- `mcp/app/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
-- `mcp/app/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.
-- `mcp/app/auth.py` - constant-time bearer authentication for OAuth-gated UI requests to Hidden Images routes.
-- `mcp/app/security.py` - legacy password/PIN authentication retained only for database compatibility and migration history.
-- `mcp/app/config.py` - reads and validates MCP settings, including database, image, Ollama, and vision-model configuration.
+- `mcp/app/transport/mcp_tools.py` - `VisiaMCPTools`, the public MCP image-management tools (hidden images are never reachable here).
+- `mcp/app/transport/http_routes.py` - `VisiaHTTPRoutes`, the REST routes used by the UI and public image links, with uniform error translation and service-token checks for Hidden Images.
+- `mcp/app/services/application.py` - use cases: `VisibleImageService` and `HiddenImageService` (sharing `ImageCollectionService`), `ImageIndexer` (analysis and backfill), `SearchService`, `PublicURLService`, and the `VisiaService` facade.
+- `mcp/app/data/repositories.py` - PostgreSQL persistence for image metadata, public URLs, and legacy hidden-vault credentials.
+- `mcp/app/data/database.py` - `Database` connection handling and the idempotent schema.
+- `mcp/app/data/storage.py` - `ImageStorage`, safe vault paths plus write, rename, and delete operations that roll back if metadata persistence fails.
+- `mcp/app/services/media.py` - upload byte validation, chat previews and contact sheets, and `ImageArchive` (uncompressed ZIPs with original filenames).
+- `mcp/app/services/downloads.py` - `DownloadStore`, short-lived ZIP archives behind unguessable `/api/downloads/{token}` links.
+- `mcp/app/integrations/remote.py` - `ImageSourceResolver` for chat file references, Base64, data URLs, and SSRF-guarded HTTPS upload sources.
+- `mcp/app/services/uploads.py` - `UploadLinkStore`, single-use upload tickets behind `/api/uploads/{token}`.
+- `mcp/app/core/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
+- `mcp/app/integrations/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
+- `mcp/app/transport/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.
+- `mcp/app/transport/auth.py` - constant-time bearer authentication for OAuth-gated UI requests to Hidden Images routes.
+- `mcp/app/transport/security.py` - legacy password/PIN authentication retained only for database compatibility and migration history.
+- `mcp/app/core/config.py` - reads and validates MCP settings, including database, image, Ollama, and vision-model configuration.
 - `mcp/app/__init__.py` - marks the MCP application directory as a Python package.
 - `mcp/tests/` - automated tests for the services, MCP tools, HTTP routes, media helpers, and security safeguards, using in-memory fakes from `fakes.py`.
 - `mcp/requirements.txt` - Python dependencies used by the MCP container.

@@ -3,16 +3,16 @@
 import uvicorn
 from mcp.server.fastmcp import FastMCP
 
-from .branding import ServerBranding
-from .config import AppConfig
-from .database import Database
-from .http_routes import VisiaHTTPRoutes
-from .mcp_tools import VisiaMCPTools
-from .models import MetadataRules
-from .remote import ImageSourceResolver
-from .repositories import ImageRepository, PublicURLRepository
-from .services import VisiaService
-from .vision import OllamaVisionAnalyzer
+from app.transport.branding import ServerBranding
+from app.core.config import AppConfig
+from app.data.database import Database
+from app.transport.http_routes import VisiaHTTPRoutes
+from app.transport.mcp_tools import VisiaMCPTools
+from app.core.models import MetadataRules
+from app.integrations.remote import ImageSourceResolver
+from app.data.repositories import ImageRepository, PublicURLRepository
+from app.services.application import VisiaService
+from app.integrations.vision import OllamaVisionAnalyzer
 
 
 class LunaVisiaApplication:

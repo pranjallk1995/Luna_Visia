@@ -5,7 +5,7 @@ from pathlib import Path
 
 from mcp.types import Icon
 
-ASSET_DIR = Path(__file__).resolve().parent / "assets"
+ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
 class ServerBranding:

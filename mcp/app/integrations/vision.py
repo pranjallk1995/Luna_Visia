@@ -6,7 +6,7 @@ from io import BytesIO
 import httpx
 from PIL import Image, ImageOps
 
-from .models import ImageAnalysis, MetadataRules
+from app.core.models import ImageAnalysis, MetadataRules
 
 
 class OllamaVisionAnalyzer:

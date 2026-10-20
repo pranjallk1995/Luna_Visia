@@ -8,8 +8,8 @@ from uuid import UUID
 
 import psycopg
 
-from .database import Database
-from .models import ImageRecord
+from app.data.database import Database
+from app.core.models import ImageRecord
 
 Row = dict[str, Any]
 

@@ -4,7 +4,7 @@ import unittest
 
 from fakes import FakeCredentialRepository
 
-from app.security import CredentialPolicy, HiddenVaultAuth, SessionStore
+from app.transport.security import CredentialPolicy, HiddenVaultAuth, SessionStore
 
 
 class HiddenVaultAuthTests(unittest.TestCase):

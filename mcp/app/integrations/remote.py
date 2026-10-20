@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlparse
 
 import httpx
 
-from .media import ImagePayloadDecoder
+from app.services.media import ImagePayloadDecoder
 
 
 @dataclass(frozen=True)

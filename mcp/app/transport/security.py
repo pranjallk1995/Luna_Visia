@@ -7,7 +7,7 @@ import secrets
 import threading
 import time
 
-from .repositories import CredentialRepository, StoredCredentials
+from app.data.repositories import CredentialRepository, StoredCredentials
 
 
 class CredentialPolicy:

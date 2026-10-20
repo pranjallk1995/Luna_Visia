@@ -24,14 +24,14 @@ from fakes import (
     png_payload,
 )
 
-from app.branding import ServerBranding
-from app.config import AppConfig
-from app.downloads import DownloadStore
-from app.http_routes import VisiaHTTPRoutes
-from app.mcp_tools import VisiaMCPTools
-from app.media import ImageArchive, PreviewRenderer, display_name
-from app.remote import ImageSourceResolver
-from app.services import VisiaService
+from app.transport.branding import ServerBranding
+from app.core.config import AppConfig
+from app.services.downloads import DownloadStore
+from app.transport.http_routes import VisiaHTTPRoutes
+from app.transport.mcp_tools import VisiaMCPTools
+from app.services.media import ImageArchive, PreviewRenderer, display_name
+from app.integrations.remote import ImageSourceResolver
+from app.services.application import VisiaService
 
 
 class ServerTestCase(unittest.TestCase):
