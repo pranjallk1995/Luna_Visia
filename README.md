@@ -8,7 +8,7 @@
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
-> **Work in progress:** Luna Visia is a local-first and desktop first image store and search under active development.
+> **Work in progress:** Luna Visia is a local-first and desktop-first image store and search under active development.
 
 Luna Visia is an AI-powered, private image library that runs locally. Its Ollama
 vision model analyzes every upload automatically, creates a concise caption and
