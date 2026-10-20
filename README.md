@@ -125,14 +125,20 @@ LUNAVISIA_API_TOKEN=replace-with-a-random-value-of-at-least-32-characters
 LUNAVISIA_ALLOWED_EMAILS=you@example.com
 ```
 
+`LUNAVISIA_API_TOKEN` is a shared secret between the UI and the MCP server, not a key issued by any service. Generate your own random value of at least 32 characters:
+
+```sh
+openssl rand -hex 32
+```
+
 Separate multiple emails with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
+`MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
 ### Google OAuth settings
 
 1. Create a Google OAuth 2.0 **Web application** client.
-2. Add `https://visia.lunaapps.fyi/oauth2callback` for the hosted app and
-   `http://localhost:18501/oauth2callback` for local access.
+2. Add `http://localhost:18501/oauth2callback`.
 3. Copy `ui/.streamlit/secrets.example.toml` to
    `ui/.streamlit/secrets.toml`.
 4. Set `redirect_uri`, `cookie_secret`, `client_id`, and `client_secret`.

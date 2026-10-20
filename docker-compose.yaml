@@ -74,9 +74,9 @@ services:
       DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-visia-db:5432/lunavisia
       IMAGE_DIR: /data/images
       OLLAMA_URL: http://luna-visia-ollama:11434
-      VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
-      LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL:-}
-      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://visia-mcp.lunaapps.fyi}
+      VISION_MODEL: ${VISION_MODEL}
+      LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-http://localhost:18000}
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
     expose:
       - "8000"

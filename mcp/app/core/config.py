@@ -90,10 +90,14 @@ class AppConfig:
             raise RuntimeError("VISION_MODEL cannot be blank.")
         image_dir = Path(os.getenv("IMAGE_DIR", "/data/images"))
         public_base_url = (
-            os.getenv("LUNAVISIA_PUBLIC_BASE_URL")
-            or os.getenv("LUNAVAULT_PUBLIC_BASE_URL")
-            or ""
-        ).strip().rstrip("/")
+            (
+                os.getenv("LUNAVISIA_PUBLIC_BASE_URL")
+                or os.getenv("LUNAVAULT_PUBLIC_BASE_URL")
+                or ""
+            )
+            .strip()
+            .rstrip("/")
+        )
         if public_base_url:
             public_url = urlparse(public_base_url)
             if public_url.scheme != "https" or not public_url.netloc:
@@ -102,7 +106,9 @@ class AppConfig:
                 )
         api_token = os.getenv("LUNAVISIA_API_TOKEN", "").strip()
         if len(api_token) < 32:
-            raise RuntimeError("LUNAVISIA_API_TOKEN must contain at least 32 characters.")
+            raise RuntimeError(
+                "LUNAVISIA_API_TOKEN must contain at least 32 characters."
+            )
         mcp_public_url = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
         if mcp_public_url:
             parsed_public_url = urlparse(mcp_public_url)
