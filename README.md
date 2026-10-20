@@ -115,30 +115,32 @@ The UI reads original images from `image_data` as read-only. All mutations go th
 
 ## Start
 
-Create the local environment file:
+Create a private `.env`:
 
-```sh
-cp .env.example .env
+```dotenv
+POSTGRES_PASSWORD=replace-with-a-private-database-password
+VISION_MODEL=qwen2.5vl:7b
+LUNAVISIA_PUBLIC_BASE_URL=
+LUNAVISIA_API_TOKEN=replace-with-a-random-value-of-at-least-32-characters
+LUNAVISIA_ALLOWED_EMAILS=you@example.com
 ```
 
-Replace `LUNAVISIA_API_TOKEN` with a private random value of at least 32
-characters and set `LUNAVISIA_ALLOWED_EMAILS` to the comma-separated Google
-accounts allowed to use the UI. Keep `.env` private; only `.env.example` is
-intended for version control.
+Separate multiple emails with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
+leave it blank when stable public image URLs are not needed.
 
 ### Google OAuth settings
 
-1. In Google Cloud, create an OAuth 2.0 client with application type **Web application**.
-2. Add the redirect URI used by this deployment. For the hosted app it is
-   `https://visia.lunaapps.fyi/oauth2callback`; for local access use
-   `http://localhost:18501/oauth2callback` and set the same value below.
+1. Create a Google OAuth 2.0 **Web application** client.
+2. Add `https://visia.lunaapps.fyi/oauth2callback` for the hosted app and
+   `http://localhost:18501/oauth2callback` for local access.
 3. Copy `ui/.streamlit/secrets.example.toml` to
    `ui/.streamlit/secrets.toml`.
-4. Set `redirect_uri`, a strong random `cookie_secret`, the Google `client_id`,
-   and `client_secret`. Keep Google's discovery URL unchanged.
+4. Set `redirect_uri`, `cookie_secret`, `client_id`, and `client_secret`.
+   Keep `server_metadata_url` unchanged. The redirect value must exactly match
+   the URL used to open Visia.
 
-OAuth client credentials belong only in `ui/.streamlit/secrets.toml`, which is
-ignored by Git. The `.env` allowlist is an additional authorization check after
+Keep OAuth credentials only in the gitignored secrets file. Do not reuse
+secrets. The `.env` allowlist is an additional authorization check after
 Google verifies the account.
 
 Start Luna Visia:
