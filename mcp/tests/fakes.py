@@ -2,6 +2,7 @@
 
 import base64
 import sys
+import zlib
 from io import BytesIO
 from pathlib import Path
 
@@ -184,6 +185,79 @@ def image_bytes(image_format="PNG", color="red", size=(4, 3)):
     buffer = BytesIO()
     Image.new("RGB", size, color).save(buffer, format=image_format)
     return buffer.getvalue()
+
+
+def cbor(value):
+    """Encode the CBOR subset used by C2PA manifests (maps, arrays, text, ints)."""
+    def head(major, length):
+        if length < 24:
+            return bytes([major << 5 | length])
+        return bytes([major << 5 | 26]) + length.to_bytes(4, "big")
+
+    if isinstance(value, str):
+        raw = value.encode()
+        return head(3, len(raw)) + raw
+    if isinstance(value, int):
+        return head(0, value)
+    if isinstance(value, list):
+        return head(4, len(value)) + b"".join(cbor(item) for item in value)
+    return head(5, len(value)) + b"".join(cbor(key) + cbor(item) for key, item in value.items())
+
+
+def jumbf_box(kind, payload):
+    return (len(payload) + 8).to_bytes(4, "big") + kind + payload
+
+
+def jumbf_superbox(label, *children):
+    description = b"\0" * 16 + b"\x03" + label.encode() + b"\0"
+    return jumbf_box(b"jumb", jumbf_box(b"jumd", description) + b"".join(children))
+
+
+def c2pa_store(source_type="trainedAlgorithmicMedia", agent="ChatGPT"):
+    """Build a minimal C2PA manifest store like the one in OpenAI's images."""
+    actions = {
+        "actions": [
+            {
+                "action": "c2pa.created",
+                "softwareAgent": {"name": agent, "version": "gpt-image"},
+                "digitalSourceType": f"http://cv.iptc.org/newscodes/digitalsourcetype/{source_type}",
+            }
+        ]
+    }
+    manifest = jumbf_superbox(
+        "urn:c2pa:test",
+        jumbf_superbox(
+            "c2pa.assertions",
+            jumbf_superbox("c2pa.actions.v2", jumbf_box(b"cbor", cbor(actions))),
+        ),
+        jumbf_superbox(
+            "c2pa.claim.v2",
+            jumbf_box(b"cbor", cbor({"claim_generator_info": {"name": "OpenAI Media Service API"}})),
+        ),
+    )
+    return jumbf_superbox("c2pa", manifest)
+
+
+def c2pa_jpeg(segment_size=40):
+    """Create a JPEG whose manifest store is split across APP11 segments."""
+    store = c2pa_store()
+    header, body = store[:8], store[8:]
+    segments = []
+    for sequence, start in enumerate(range(0, len(body), segment_size), start=1):
+        payload = b"JP" + (1).to_bytes(2, "big") + sequence.to_bytes(4, "big")
+        payload += header + body[start : start + segment_size]
+        segments.append(b"\xff\xeb" + (len(payload) + 2).to_bytes(2, "big") + payload)
+    jpeg = image_bytes("JPEG", "green")
+    return jpeg[:2] + b"".join(segments) + jpeg[2:]
+
+
+def c2pa_png(source_type="trainedAlgorithmicMedia", agent="ChatGPT"):
+    """Create a PNG carrying a minimal C2PA manifest like OpenAI's images."""
+    store = c2pa_store(source_type, agent)
+    png = image_bytes("PNG", "green")
+    crc = zlib.crc32(b"caBX" + store).to_bytes(4, "big")
+    chunk = len(store).to_bytes(4, "big") + b"caBX" + store + crc
+    return png[:33] + chunk + png[33:]
 
 
 def png_payload(color="red", size=(4, 3)):

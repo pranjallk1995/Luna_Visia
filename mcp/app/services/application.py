@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 
 from app.core.config import AppConfig
 from app.services.downloads import DownloadStore, DownloadTicket
+from app.services.inspection import ImageInspector
 from app.services.media import ImagePayloadDecoder, PreviewRenderer
 from app.core.models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
 from app.data.repositories import ImageRepository, PublicURLRepository, Row
@@ -97,6 +99,8 @@ class ImageIndexer:
     """Generate AI metadata for image bytes and persist it with content identity."""
 
     AI_MODIFIED_TAG = "ai modified"
+    # Marks images whose embedded provenance (C2PA, XMP, generator fields) says AI made them.
+    AI_INFO_TAG = "ai info"
 
     def __init__(
         self,
@@ -104,17 +108,28 @@ class ImageIndexer:
         images: ImageRepository,
         analyzer: OllamaVisionAnalyzer,
         urls: PublicURLService,
+        inspector: ImageInspector,
+        rules: MetadataRules,
     ) -> None:
         self.storage = storage
         self.images = images
         self.analyzer = analyzer
         self.urls = urls
+        self.inspector = inspector
+        self.rules = rules
+
+    def system_tags(self, data: bytes, modified: bool = False) -> list[str]:
+        tags = [self.AI_MODIFIED_TAG] if modified else []
+        if self.inspector.is_ai_generated(data):
+            tags.append(self.AI_INFO_TAG)
+        return tags
 
     def analyze(self, data: bytes, modified: bool = False) -> ImageAnalysis:
-        """Analyze bytes, tagging replacements of an existing image."""
+        """Analyze bytes, tagging replacements and AI-generated images."""
         analysis = self.analyzer.analyze(data)
-        if modified and self.AI_MODIFIED_TAG not in analysis.tags:
-            analysis = analysis.model_copy(update={"tags": [*analysis.tags, self.AI_MODIFIED_TAG]})
+        extra = self.system_tags(data, modified)
+        if extra:
+            analysis = analysis.model_copy(update={"tags": self.rules.with_tags(analysis.tags, extra)})
         return analysis
 
     def store(self, name: str, data: bytes, analysis: ImageAnalysis) -> Row:
@@ -129,9 +144,13 @@ class ImageIndexer:
         return self.images.upsert(record, self.urls.base_url())
 
     def backfill(self) -> dict[str, Any]:
-        """Analyze unindexed or changed files while skipping current records."""
+        """Analyze unindexed or changed files while skipping current records.
+
+        Current records are not re-analyzed, but AI-generated ones missing the
+        ``ai info`` tag get it added.
+        """
         indexed = {item["name"]: item for item in self.images.list(hidden=None)}
-        analyzed = []
+        analyzed, ai_tagged = [], []
         skipped = 0
         for path in self.storage.image_files():
             data = path.read_bytes()
@@ -142,6 +161,14 @@ class ImageIndexer:
                 and existing["analysis_model"] == self.analyzer.model
             ):
                 skipped += 1
+                if self.AI_INFO_TAG not in existing["tags"] and self.inspector.is_ai_generated(data):
+                    self.images.update_metadata(
+                        path.name,
+                        existing["caption"],
+                        self.rules.with_tags(existing["tags"], [self.AI_INFO_TAG]),
+                        hidden=existing["hidden"],
+                    )
+                    ai_tagged.append(path.name)
                 continue
             self.store(path.name, data, self.analyze(data))
             analyzed.append(path.name)
@@ -149,6 +176,8 @@ class ImageIndexer:
             "analyzed_count": len(analyzed),
             "skipped_count": skipped,
             "analyzed": analyzed,
+            "ai_tagged_count": len(ai_tagged),
+            "ai_tagged": ai_tagged,
         }
 
 
@@ -161,13 +190,22 @@ class ImageCollectionService:
 
     HIDDEN: bool
     WRONG_COLLECTION_MESSAGE: str
+    AI_INFO_REQUIRED_MESSAGE = (
+        f"The {ImageIndexer.AI_INFO_TAG!r} tag cannot be removed: this image's embedded "
+        "metadata marks it as AI-generated."
+    )
 
     def __init__(
-        self, storage: ImageStorage, images: ImageRepository, rules: MetadataRules
+        self,
+        storage: ImageStorage,
+        images: ImageRepository,
+        rules: MetadataRules,
+        inspector: ImageInspector,
     ) -> None:
         self.storage = storage
         self.images = images
         self.rules = rules
+        self.inspector = inspector
 
     def path(self, name: str) -> Path:
         """Return the file for an image in this collection or reject access."""
@@ -186,8 +224,12 @@ class ImageCollectionService:
         return self.images.list(hidden=self.HIDDEN)
 
     def update_metadata(self, name: str, change: MetadataChange) -> Row:
-        """Explicitly edit a caption and/or searchable tags."""
-        self.path(name)
+        """Explicitly edit a caption and/or searchable tags.
+
+        AI-generated images always keep the ``ai info`` tag: removing it is
+        rejected, and an image that lacks it gets it back on any edit.
+        """
+        path = self.path(name)
         if change.is_empty:
             raise ValueError("Provide a caption, add_tags, or remove_tags change.")
         current = self.get(name)
@@ -195,6 +237,11 @@ class ImageCollectionService:
             current["caption"] if change.caption is None else self.rules.caption(change.caption)
         )
         tags = self.rules.edited_tags(current["tags"], change.add_tags, change.remove_tags)
+        ai_tag = ImageIndexer.AI_INFO_TAG
+        if ai_tag not in tags and self.inspector.is_ai_generated(path.read_bytes()):
+            if ai_tag in current["tags"]:
+                raise ValueError(self.AI_INFO_REQUIRED_MESSAGE)
+            tags = self.rules.with_tags(tags, [ai_tag])
         return self.images.update_metadata(name, caption, tags, hidden=self.HIDDEN)
 
     def remove(self, name: str) -> dict[str, str]:
@@ -209,6 +256,8 @@ class VisibleImageService(ImageCollectionService):
 
     HIDDEN = False
     WRONG_COLLECTION_MESSAGE = "Hidden images require authentication."
+    FULL_DETAIL_MAX_IMAGES = 20
+    BATCH_MAX_IMAGES = 100
     RENAME_STEM_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 
     def __init__(
@@ -218,10 +267,11 @@ class VisibleImageService(ImageCollectionService):
         rules: MetadataRules,
         decoder: ImagePayloadDecoder,
         indexer: ImageIndexer,
+        inspector: ImageInspector,
         max_fetch_images: int,
         max_fetch_bytes: int,
     ) -> None:
-        super().__init__(storage, images, rules)
+        super().__init__(storage, images, rules, inspector)
         self.decoder = decoder
         self.indexer = indexer
         self.max_fetch_images = max_fetch_images
@@ -285,6 +335,105 @@ class VisibleImageService(ImageCollectionService):
         with self.storage.renaming(source, destination):
             metadata = self.images.rename(name, new_name)
         return {"status": "renamed", "old_name": name, **metadata}
+
+    def metadata(self, name: str) -> dict[str, Any]:
+        """Return the stored record plus everything embedded in the image file."""
+        path = self.path(name)
+        return {**self.get(name), **self.inspector.inspect(path.read_bytes())}
+
+    def _describe(self, row: Row, detail: str) -> Row:
+        """Combine one record with its embedded metadata at the requested detail."""
+        try:
+            inspected = self.inspector.inspect(self.storage.existing_path(row["name"]).read_bytes())
+        except (OSError, ValueError, SyntaxError):
+            return {**summarize(row), "embedded": {"error": "The image file could not be read."}}
+        if detail == "full":
+            return {**row, **inspected}
+        return {**summarize(row), "embedded": self.inspector.summarize(inspected)}
+
+    def metadata_page(
+        self,
+        limit: int,
+        offset: int,
+        max_limit: int,
+        names: list[str] | None = None,
+        detail: str = "summary",
+    ) -> dict[str, Any]:
+        """Return stored and embedded metadata for a page or an explicit batch.
+
+        Full detail is capped at ``FULL_DETAIL_MAX_IMAGES`` because complete
+        EXIF and C2PA output is large; summaries allow up to ``max_limit``.
+        """
+        if detail not in ("summary", "full"):
+            raise ValueError('detail must be "summary" or "full".')
+        max_limit = min(max_limit, self.FULL_DETAIL_MAX_IMAGES) if detail == "full" else max_limit
+        if names is None:
+            rows = self.list()
+            limit, offset = min(max(limit, 1), max_limit), max(offset, 0)
+            selected = rows[offset : offset + limit]
+            return page([self._describe(row, detail) for row in selected], len(rows), limit, offset)
+        if any(not isinstance(name, str) for name in names):
+            raise ValueError("Every image name must be a string.")
+        clean_names = unique_names(names, "Provide at least one image name.")
+        if len(clean_names) > max_limit:
+            raise ValueError(f"Request metadata for at most {max_limit} images at a time.")
+        rows = [self.images.get(name, hidden=False) for name in clean_names]
+        result = page(
+            [self._describe(row, detail) for row in rows if row is not None],
+            len(clean_names),
+            len(clean_names),
+            0,
+        )
+        unavailable = [name for name, row in zip(clean_names, rows) if row is None]
+        if unavailable:
+            result["unavailable"] = unavailable
+        return result
+
+    def _apply_batch(
+        self, items: list[tuple[str, Callable[[], Row]]], result_key: str
+    ) -> dict[str, Any]:
+        """Apply each change on its own, reporting failures instead of stopping."""
+        if not items:
+            raise ValueError("Provide at least one image change.")
+        if len(items) > self.BATCH_MAX_IMAGES:
+            raise ValueError(f"Change at most {self.BATCH_MAX_IMAGES} images at a time.")
+        succeeded, failed = [], []
+        for name, apply in items:
+            try:
+                succeeded.append(apply())
+            except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as error:
+                failed.append({"name": name, "error": str(error)})
+        return {
+            f"{result_key}_count": len(succeeded),
+            "failed_count": len(failed),
+            result_key: succeeded,
+            "failed": failed,
+        }
+
+    def update_metadata_many(self, changes: list[tuple[str, MetadataChange]]) -> dict[str, Any]:
+        """Edit captions and tags of many visible images in one call."""
+        return self._apply_batch(
+            [
+                (name, lambda name=name, change=change: summarize(self.update_metadata(name, change)))
+                for name, change in changes
+            ],
+            "updated",
+        )
+
+    def rename_many(self, renames: list[tuple[str, str]]) -> dict[str, Any]:
+        """Rename many visible images in order, so chained renames work."""
+
+        def rename(name: str, new_name: str) -> Row:
+            renamed = self.rename(name, new_name)
+            return {"old_name": name, "name": renamed["name"], "public_url": renamed["public_url"]}
+
+        return self._apply_batch(
+            [
+                (name, lambda name=name, new_name=new_name: rename(name, new_name))
+                for name, new_name in renames
+            ],
+            "renamed",
+        )
 
     def favorites(self) -> list[Row]:
         return self.images.list_favorites()
@@ -601,19 +750,21 @@ class VisiaService:
         storage = ImageStorage(config.image_dir, set(config.allowed_formats))
         urls = PublicURLService(public_urls)
         urls.seed(config.public_base_url)
-        indexer = ImageIndexer(storage, images, analyzer, urls)
+        inspector = ImageInspector()
+        indexer = ImageIndexer(storage, images, analyzer, urls, inspector, rules)
         visible = VisibleImageService(
             storage,
             images,
             rules,
             ImagePayloadDecoder(config.allowed_formats, config.max_image_bytes),
             indexer,
+            inspector,
             config.max_fetch_images,
             config.max_fetch_bytes,
         )
         return cls(
             visible=visible,
-            hidden=HiddenImageService(storage, images, rules),
+            hidden=HiddenImageService(storage, images, rules, inspector),
             search=SearchService(images, rules, config.search_limit_max),
             indexer=indexer,
             urls=urls,

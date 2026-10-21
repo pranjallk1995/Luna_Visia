@@ -48,6 +48,60 @@ FileInput = Annotated[
 ]
 
 
+class MetadataUpdate(BaseModel):
+    """One image's caption and tag change within a batch."""
+
+    name: str
+    caption: str | None = None
+    add_tags: list[str] | None = None
+    remove_tags: list[str] | None = None
+
+
+class RenameRequest(BaseModel):
+    """One image rename within a batch."""
+
+    name: str
+    new_name: str
+
+
+TAG_LIST_SCHEMA = {"type": "array", "items": {"type": "string"}}
+
+MetadataUpdates = Annotated[
+    list[MetadataUpdate],
+    WithJsonSchema(
+        {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "caption": {"type": "string"},
+                    "add_tags": TAG_LIST_SCHEMA,
+                    "remove_tags": TAG_LIST_SCHEMA,
+                },
+                "required": ["name"],
+            },
+            "description": "One entry per image: its exact name and the changes to apply.",
+        }
+    ),
+]
+
+RenameRequests = Annotated[
+    list[RenameRequest],
+    WithJsonSchema(
+        {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "new_name": {"type": "string"}},
+                "required": ["name", "new_name"],
+            },
+            "description": "One entry per image: its exact current name and the new name.",
+        }
+    ),
+]
+
+
 async def offload(function: Callable[..., Result], *args: Any) -> Result:
     """Run slow, blocking work (vision analysis, archives) off the event loop.
 
@@ -130,8 +184,51 @@ class VisiaMCPTools:
             return await self.with_preview(results, "results", include_preview)
 
         @server.tool()
+        async def get_image_metadata(name: str) -> dict[str, Any]:
+            """Return all metadata for one visible image: stored and embedded.
+
+            Includes the stored caption, tags, favorite flag, size, SHA-256,
+            analysis model, timestamps, and public_url, plus what the file itself
+            carries: format, dimensions, EXIF (camera, software, dates, GPS),
+            PNG text chunks, XMP, and its C2PA content-credentials manifest.
+            ai_generated and ai_signals say whether embedded provenance marks the
+            image as made by generative AI; such images carry the "ai info" tag.
+            C2PA signatures are reported, not verified, and missing provenance
+            does not prove an image is not AI-generated (re-saving strips it).
+            """
+            return await offload(visible.metadata, name)
+
+        @server.tool()
+        async def list_image_metadata(
+            limit: int = 50,
+            offset: int = 0,
+            names: list[str] | None = None,
+            detail: Literal["summary", "full"] = "summary",
+        ) -> dict[str, Any]:
+            """Return metadata for many visible images at once, for bulk search and classification.
+
+            Pages newest first like list_images (follow next_offset; null on the
+            last page), or pass names for an exact batch; missing or hidden names
+            are listed under "unavailable".
+            - summary (up to 100 per call): name, caption, tags, favorite, size,
+              updated_at, public_url, and an "embedded" object with format,
+              dimensions, ai_generated, ai_signals, generator, camera, lens,
+              captured_at, software, and gps when present.
+            - full (up to 20 per call): the complete get_image_metadata output
+              for each image, including all EXIF, XMP, and C2PA details.
+            Prefer summary for scanning a library; fetch full only for images
+            that need closer inspection.
+            """
+            return await offload(
+                visible.metadata_page, limit, offset, search.limit_max, names, detail
+            )
+
+        @server.tool()
         async def backfill_metadata() -> dict[str, Any]:
-            """Analyze files missing current metadata; idempotent by hash/model."""
+            """Analyze files missing current metadata; idempotent by hash/model.
+
+            Also adds the "ai info" tag to already-indexed AI-generated images.
+            """
             return await offload(indexer.backfill)
 
     def _register_delivery_tools(self) -> None:
@@ -260,12 +357,45 @@ class VisiaMCPTools:
             """Edit a visible image caption and add or remove searchable tags.
 
             Tags must be lowercase; a tag containing capital letters is rejected
-            and nothing is changed.
+            and nothing is changed. The "ai info" tag cannot be removed from
+            images whose embedded metadata marks them as AI-generated.
             """
             MetadataRules.require_lowercase_tags(add_tags, "add_tags")
             MetadataRules.require_lowercase_tags(remove_tags, "remove_tags")
             change = MetadataChange(caption, add_tags, remove_tags)
             return {"status": "metadata_updated", **visible.update_metadata(name, change)}
+
+        @server.tool()
+        async def update_images_metadata(updates: MetadataUpdates) -> dict[str, Any]:
+            """Edit captions and add or remove tags on up to 100 visible images at once.
+
+            Use it to apply LLM classification results from list_image_metadata
+            or search_images. Each entry is applied independently: successes are
+            listed under "updated" and per-image errors under "failed" (for
+            example a missing name, too many tags, or removing "ai info" from an
+            AI-generated image). Tags must be lowercase; any
+            capitalized tag rejects the whole batch and nothing is changed.
+            """
+            for update in updates:
+                MetadataRules.require_lowercase_tags(update.add_tags, f"add_tags for {update.name!r}")
+                MetadataRules.require_lowercase_tags(update.remove_tags, f"remove_tags for {update.name!r}")
+            changes = [
+                (update.name, MetadataChange(update.caption, update.add_tags, update.remove_tags))
+                for update in updates
+            ]
+            return {"status": "metadata_updated", **await offload(visible.update_metadata_many, changes)}
+
+        @server.tool()
+        async def rename_images(renames: RenameRequests) -> dict[str, Any]:
+            """Rename up to 100 visible images at once, applied in the given order.
+
+            The same rules as rename_image apply to each: only letters, numbers,
+            and underscores, the extension unchanged, and the immutable ID and
+            public URL kept. Each rename is independent: successes are listed
+            under "renamed" and per-image errors under "failed".
+            """
+            pairs = [(rename.name, rename.new_name) for rename in renames]
+            return {"status": "renamed", **await offload(visible.rename_many, pairs)}
 
         @server.tool()
         def rename_image(name: str, new_name: str) -> dict[str, Any]:

@@ -257,7 +257,9 @@ class ImagePreviewDialog:
             self._save(keys.name, remove_tags=removed)
             st.session_state[keys.tag_error] = None
         except httpx.HTTPError as error:
-            st.session_state[keys.tag_error] = f"Could not remove tag: {error}"
+            st.session_state[keys.tag_error] = LunaVisiaAPI.error_message(
+                error, "Could not remove the tag."
+            )
         finally:
             st.session_state[keys.pills_generation] += 1
 

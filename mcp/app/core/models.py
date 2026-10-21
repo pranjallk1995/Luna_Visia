@@ -99,6 +99,11 @@ class MetadataRules:
             raise ValueError(f"Images can have at most {self.max_tags} tags.")
         return updated
 
+    def with_tags(self, tags: list[str], extra: list[str]) -> list[str]:
+        """Append system tags, dropping trailing other tags to stay within the limit."""
+        extra = [tag for tag in extra if tag not in tags]
+        return [*tags[: max(self.max_tags - len(extra), 0)], *extra]
+
     def search_query(self, query: str) -> str:
         """Reduce natural-language search text to meaningful indexed words."""
         words = re.findall(r"[a-z0-9]+", query.lower())

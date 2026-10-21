@@ -132,6 +132,108 @@ class MCPToolTests(ServerTestCase):
             },
         )
 
+    def test_get_image_metadata_returns_stored_and_embedded_fields(self) -> None:
+        metadata = self.call("get_image_metadata", {"name": "one.png"})
+        self.assertEqual(metadata["name"], "one.png")
+        self.assertEqual(metadata["tags"], ["cat", "sofa"])
+        self.assertEqual((metadata["file"]["width"], metadata["file"]["height"]), (1200, 800))
+        self.assertFalse(metadata["ai_generated"])
+
+    def test_get_image_metadata_rejects_hidden_images(self) -> None:
+        self.repository.rows["one.png"]["hidden"] = True
+        with self.assertRaises(ToolError):
+            self.call("get_image_metadata", {"name": "one.png"})
+
+    def test_list_image_metadata_pages_compact_summaries(self) -> None:
+        first = self.call("list_image_metadata", {"limit": 1})
+        self.assertEqual((first["count"], first["next_offset"]), (2, 1))
+        [item] = first["images"]
+        self.assertEqual(item["embedded"]["format"], "PNG")
+        self.assertFalse(item["embedded"]["ai_generated"])
+        self.assertNotIn("exif", item)
+        second = self.call("list_image_metadata", {"limit": 1, "offset": 1})
+        self.assertIsNone(second["next_offset"])
+
+    def test_list_image_metadata_batch_reports_unavailable_names(self) -> None:
+        self.repository.rows["two.png"]["hidden"] = True
+        result = self.call(
+            "list_image_metadata", {"names": ["one.png", "two.png", "missing.png"], "detail": "full"}
+        )
+        self.assertEqual([item["name"] for item in result["images"]], ["one.png"])
+        self.assertIn("exif", result["images"][0])
+        self.assertEqual(result["unavailable"], ["two.png", "missing.png"])
+
+    def test_list_image_metadata_caps_full_detail_batches(self) -> None:
+        with self.assertRaises(ToolError):
+            self.call("list_image_metadata", {"names": [f"{i}.png" for i in range(21)], "detail": "full"})
+
+    def test_update_images_metadata_applies_each_change_and_reports_failures(self) -> None:
+        result = self.call(
+            "update_images_metadata",
+            {
+                "updates": [
+                    {"name": "one.png", "add_tags": ["food"], "remove_tags": ["sofa"]},
+                    {"name": "two.png", "caption": "A blue square."},
+                    {"name": "missing.png", "add_tags": ["food"]},
+                ]
+            },
+        )
+        self.assertEqual((result["updated_count"], result["failed_count"]), (2, 1))
+        self.assertEqual(self.repository.rows["one.png"]["tags"], ["cat", "food"])
+        self.assertEqual(self.repository.rows["two.png"]["caption"], "A blue square.")
+        self.assertEqual(result["failed"][0]["name"], "missing.png")
+
+    def test_update_images_metadata_rejects_capitalized_tags_without_changes(self) -> None:
+        with self.assertRaises(ToolError):
+            self.call(
+                "update_images_metadata",
+                {"updates": [{"name": "one.png", "add_tags": ["food"]}, {"name": "two.png", "add_tags": ["Food"]}]},
+            )
+        self.assertEqual(self.repository.rows["one.png"]["tags"], ["cat", "sofa"])
+
+    def test_batch_update_reports_ai_info_removal_as_failure(self) -> None:
+        from fakes import c2pa_png
+
+        self.service.visible.upload("generated.png", c2pa_png())
+        result = self.call(
+            "update_images_metadata",
+            {
+                "updates": [
+                    {"name": "generated.png", "remove_tags": ["ai info"]},
+                    {"name": "one.png", "add_tags": ["food"]},
+                ]
+            },
+        )
+        self.assertEqual(result["updated_count"], 1)
+        self.assertIn("cannot be removed", result["failed"][0]["error"])
+
+    def test_batch_tool_schemas_are_inline(self) -> None:
+        for name in ("update_images_metadata", "rename_images"):
+            schema = json.dumps(self.server._tool_manager.get_tool(name).parameters)
+            self.assertNotIn("$ref", schema)
+
+    def test_rename_images_applies_in_order(self) -> None:
+        result = self.call(
+            "rename_images",
+            {
+                "renames": [
+                    {"name": "one.png", "new_name": "first.png"},
+                    {"name": "two.png", "new_name": "one.png"},
+                    {"name": "first.png", "new_name": "bad name.png"},
+                ]
+            },
+        )
+        self.assertEqual([item["name"] for item in result["renamed"]], ["first.png", "one.png"])
+        self.assertTrue(result["renamed"][0]["public_url"].endswith("/image-1"))
+        self.assertEqual(result["failed"][0]["name"], "first.png")
+        self.assertTrue((self.root / "first.png").is_file())
+
+    def test_batch_updates_are_capped(self) -> None:
+        with self.assertRaises(ToolError):
+            self.call("rename_images", {"renames": [{"name": f"{i}.png", "new_name": f"n{i}.png"} for i in range(101)]})
+        with self.assertRaises(ToolError):
+            self.call("update_images_metadata", {"updates": []})
+
     def test_rename_image_preserves_public_url(self) -> None:
         renamed = self.call("rename_image", {"name": "one.png", "new_name": "renamed.png"})
         self.assertEqual(renamed["name"], "renamed.png")

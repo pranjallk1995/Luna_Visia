@@ -13,6 +13,8 @@ from fakes import (
     FakeAnalyzer,
     FakeImageRepository,
     FakePublicURLRepository,
+    c2pa_jpeg,
+    c2pa_png,
     image_bytes,
     png_payload,
 )
@@ -20,6 +22,7 @@ from fakes import (
 from app.core.config import AppConfig
 from app.core.models import MetadataChange, MetadataRules
 from app.services.application import VisiaService
+from app.services.inspection import ImageInspector
 from app.services.uploads import UploadLinkNotFound
 from app.integrations.vision import OllamaVisionAnalyzer
 
@@ -103,6 +106,128 @@ class IngestTests(VisiaServiceTestCase):
         result = self.service.indexer.backfill()
         self.assertEqual(result["analyzed"], ["dog.png"])
         self.assertEqual(result["skipped_count"], 1)
+
+
+class AIProvenanceTests(VisiaServiceTestCase):
+    def test_inspector_reads_c2pa_generator_and_source_type(self):
+        result = ImageInspector().inspect(c2pa_png())
+        self.assertTrue(result["ai_generated"])
+        self.assertEqual(result["c2pa"]["claim_generator"], "OpenAI Media Service API")
+        [action] = result["c2pa"]["actions"]
+        self.assertEqual(action["software_agent"], "ChatGPT gpt-image")
+        self.assertEqual(action["digital_source_type"], "trainedAlgorithmicMedia")
+        self.assertFalse(result["c2pa"]["signature_verified"])
+
+    def test_inspector_joins_jpeg_app11_manifest_segments(self):
+        result = ImageInspector().inspect(c2pa_jpeg())
+        self.assertEqual(result["file"]["format"], "JPEG")
+        self.assertEqual(result["c2pa"]["actions"][0]["software_agent"], "ChatGPT gpt-image")
+        self.assertTrue(result["ai_generated"])
+
+    def test_c2pa_without_ai_source_type_is_not_ai(self):
+        result = ImageInspector().inspect(c2pa_png("digitalCapture", "Camera"))
+        self.assertTrue(result["c2pa"]["present"])
+        self.assertFalse(result["ai_generated"])
+
+    def test_diffusion_parameters_and_generator_software_are_ai_signals(self):
+        from PIL.PngImagePlugin import PngInfo
+
+        info = PngInfo()
+        info.add_text("parameters", "a cat, Steps: 20, Sampler: Euler")
+        buffer = BytesIO()
+        Image.new("RGB", (4, 3)).save(buffer, format="PNG", pnginfo=info)
+        result = ImageInspector().inspect(buffer.getvalue())
+        self.assertTrue(result["ai_generated"])
+        self.assertIn("parameters", result["text_chunks"])
+
+        exif = Image.Exif()
+        exif[0x0131] = "Midjourney"
+        buffer = BytesIO()
+        Image.new("RGB", (4, 3)).save(buffer, format="JPEG", exif=exif)
+        self.assertEqual(
+            ImageInspector().inspect(buffer.getvalue())["ai_signals"], ["EXIF Software: Midjourney"]
+        )
+
+    def test_plain_image_has_no_ai_signals(self):
+        result = ImageInspector().inspect(image_bytes())
+        self.assertFalse(result["ai_generated"])
+        self.assertIsNone(result["c2pa"])
+        self.assertEqual(result["file"]["format"], "PNG")
+
+    def test_ingesting_ai_image_adds_ai_info_tag(self):
+        result = self.visible.upload("generated.png", c2pa_png())
+        self.assertEqual(result["tags"], ["cat", "sofa", "ai info"])
+        plain = self.visible.upload("photo.png", image_bytes())
+        self.assertNotIn("ai info", plain["tags"])
+
+    def test_system_tags_stay_within_tag_limit(self):
+        rules = self.service.indexer.rules
+        full = [f"tag {index}" for index in range(rules.max_tags)]
+        tagged = rules.with_tags(full, ["ai modified", "ai info"])
+        self.assertEqual(len(tagged), rules.max_tags)
+        self.assertEqual(tagged[-2:], ["ai modified", "ai info"])
+
+    def test_ai_info_tag_cannot_be_removed_from_ai_images(self):
+        self.visible.upload("generated.png", c2pa_png())
+        with self.assertRaisesRegex(ValueError, "cannot be removed"):
+            self.visible.update_metadata("generated.png", MetadataChange(remove_tags=["ai info"]))
+        with self.assertRaisesRegex(ValueError, "cannot be removed"):
+            self.visible.update_metadata(
+                "generated.png", MetadataChange(remove_tags=["cat", "ai info"])
+            )
+        self.assertEqual(self.repository.rows["generated.png"]["tags"], ["cat", "sofa", "ai info"])
+        updated = self.visible.update_metadata("generated.png", MetadataChange(remove_tags=["cat"]))
+        self.assertEqual(updated["tags"], ["sofa", "ai info"])
+
+    def test_editing_untagged_ai_image_restores_ai_info_tag(self):
+        self.visible.upload("generated.png", c2pa_png())
+        self.repository.rows["generated.png"]["tags"] = ["cat"]
+        updated = self.visible.update_metadata("generated.png", MetadataChange(caption="A cat."))
+        self.assertEqual(updated["tags"], ["cat", "ai info"])
+
+    def test_ai_info_is_enforced_for_hidden_images_too(self):
+        self.visible.upload("generated.png", c2pa_png())
+        self.repository.rows["generated.png"]["hidden"] = True
+        with self.assertRaisesRegex(ValueError, "cannot be removed"):
+            self.hidden.update_metadata("generated.png", MetadataChange(remove_tags=["ai info"]))
+
+    def test_ai_info_can_be_added_and_removed_on_other_images(self):
+        self.visible.upload("photo.png", image_bytes())
+        self.visible.update_metadata("photo.png", MetadataChange(add_tags=["ai info"]))
+        updated = self.visible.update_metadata("photo.png", MetadataChange(remove_tags=["ai info"]))
+        self.assertNotIn("ai info", updated["tags"])
+
+    def test_backfill_adds_ai_info_tag_to_current_records(self):
+        self.visible.upload("generated.png", c2pa_png())
+        self.repository.rows["generated.png"]["tags"] = ["cat"]
+        result = self.service.indexer.backfill()
+        self.assertEqual(result["ai_tagged"], ["generated.png"])
+        self.assertEqual(result["analyzed"], [])
+        self.assertEqual(self.repository.rows["generated.png"]["tags"], ["cat", "ai info"])
+        self.assertEqual(self.service.indexer.backfill()["ai_tagged_count"], 0)
+
+    def test_metadata_summary_names_generator(self):
+        self.visible.upload("generated.png", c2pa_png())
+        [item] = self.visible.metadata_page(10, 0, 100)["images"]
+        self.assertEqual(item["embedded"]["generator"], "ChatGPT gpt-image")
+        self.assertTrue(item["embedded"]["ai_generated"])
+        self.assertIn("ai info", item["tags"])
+
+    def test_metadata_page_reports_unreadable_files(self):
+        self.visible.upload("generated.png", c2pa_png())
+        (self.root / "generated.png").unlink()
+        [item] = self.visible.metadata_page(10, 0, 100)["images"]
+        self.assertIn("error", item["embedded"])
+
+    def test_metadata_combines_record_and_embedded_details(self):
+        self.visible.upload("generated.png", c2pa_png())
+        metadata = self.visible.metadata("generated.png")
+        self.assertEqual(metadata["caption"], "A tabby cat on a sofa.")
+        self.assertEqual(metadata["file"]["width"], 4)
+        self.assertTrue(metadata["ai_generated"])
+        self.repository.rows["generated.png"]["hidden"] = True
+        with self.assertRaises(PermissionError):
+            self.visible.metadata("generated.png")
 
 
 class PublicURLTests(VisiaServiceTestCase):
