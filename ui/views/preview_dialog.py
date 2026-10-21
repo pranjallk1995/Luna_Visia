@@ -1,4 +1,4 @@
-"""Full-size image dialog with inline caption and tag editing."""
+"""Full-size image dialog with inline name, caption, and tag editing."""
 
 import html
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ import httpx
 import streamlit as st
 
 from config import UIConfig
+from services.api import LunaVisiaAPI
 from services.images import ImageFiles
 from views.actions import GalleryActions
 
@@ -17,6 +18,22 @@ class PreviewKeys:
     """Session-state and widget keys for one image's preview dialog."""
 
     name: str
+
+    @property
+    def name_editing(self) -> str:
+        return f"preview_name_edit_{self.name}"
+
+    @property
+    def name_draft(self) -> str:
+        return f"{self.name_editing}_draft"
+
+    @property
+    def name_error(self) -> str:
+        return f"{self.name_editing}_error"
+
+    @property
+    def renamed(self) -> str:
+        return f"{self.name_editing}_done"
 
     @property
     def caption_editing(self) -> str:
@@ -53,10 +70,11 @@ class PreviewKeys:
 
 
 class ImagePreviewDialog:
-    """Show one image full size and edit its caption and tags in place.
+    """Show one image full size and edit its name, caption, and tags in place.
 
-    Edits update ``metadata_by_name`` so the dialog's own fragment reruns show
-    the saved values without reloading the page.
+    Caption and tag edits update ``metadata_by_name`` so the dialog's own
+    fragment reruns show the saved values without reloading the page. A rename
+    moves the file, so it closes the dialog and reruns the whole app instead.
     """
 
     def __init__(
@@ -81,12 +99,75 @@ class ImagePreviewDialog:
         self.metadata_by_name[name] = self.actions.update_metadata(name, **change)
 
     def _render(self, image_path: Path) -> None:
+        keys = PreviewKeys(image_path.name)
+        if st.session_state.pop(keys.renamed, None):
+            st.rerun()
         st.image(self.files.full_preview(image_path), width="stretch")
         metadata = self.metadata_by_name.get(image_path.name) or {}
-        keys = PreviewKeys(image_path.name)
         st.session_state.setdefault(keys.pills_generation, 0)
+        if self.actions.allows_renaming:
+            self._render_name(keys, image_path)
         self._render_caption(keys, str(metadata.get("caption") or ""))
         self._render_tags(keys, list(metadata.get("tags") or []))
+
+    # Name
+
+    def _save_name(self, keys: PreviewKeys, suffix: str) -> None:
+        """Rename the image from Enter or the checkmark, keeping its extension."""
+        stem = st.session_state.get(keys.name_draft, "").strip()
+        new_name = f"{stem}{suffix}"
+        if new_name == keys.name or stem == Path(self.files.display_name(keys.name)).stem:
+            st.session_state[keys.name_editing] = False
+            st.session_state[keys.name_error] = None
+            return
+        try:
+            self.actions.rename(keys.name, new_name)
+        except httpx.HTTPError as error:
+            st.session_state[keys.name_error] = LunaVisiaAPI.error_message(
+                error, "Could not rename the image."
+            )
+            return
+        st.session_state[keys.name_editing] = False
+        st.session_state[keys.name_error] = None
+        st.session_state[keys.renamed] = True
+        st.toast(f"Renamed to {new_name}.", icon=":material/check:")
+
+    def _render_name(self, keys: PreviewKeys, image_path: Path) -> None:
+        display_name = self.files.display_name(image_path.name)
+        box = st.container()
+        self._marker(box, "lv-preview-details")
+        icon_column, name_column, edit_column = box.columns(
+            [0.6, 18.4, 1], vertical_alignment="center"
+        )
+        self._marker(icon_column, "lv-preview-static-icon")
+        if st.session_state.get(keys.name_editing, False):
+            name_column.text_input(
+                "Name",
+                key=keys.name_draft,
+                max_chars=200,
+                label_visibility="collapsed",
+                placeholder=f"Letters, numbers, and underscores ({image_path.suffix} is kept)",
+                on_change=self._save_name,
+                args=(keys, image_path.suffix),
+            )
+            edit_column.button(
+                ":material/check:",
+                key=f"save_{keys.name_editing}",
+                width="stretch",
+                on_click=self._save_name,
+                args=(keys, image_path.suffix),
+            )
+            if st.session_state.get(keys.name_error):
+                box.error(st.session_state[keys.name_error])
+            return
+        name_column.markdown(
+            f'<div class="lv-preview-caption">{html.escape(display_name)}</div>',
+            unsafe_allow_html=True,
+        )
+        if edit_column.button(":material/edit:", key=f"open_{keys.name_editing}", width="stretch"):
+            st.session_state[keys.name_editing] = True
+            st.session_state[keys.name_draft] = Path(display_name).stem
+            st.rerun(scope="fragment")
 
     # Caption
 

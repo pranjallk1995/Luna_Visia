@@ -23,6 +23,7 @@ class GalleryActions:
 
     shows_favorites = True
     allows_hiding = True
+    allows_renaming = True
 
     def __init__(self, api: LunaVisiaAPI) -> None:
         self.api = api
@@ -48,6 +49,10 @@ class GalleryActions:
         st.session_state.pending_view_hide = None
         SessionState.refresh_gallery()
 
+    def rename(self, name: str, new_name: str) -> None:
+        self.api.rename_image(name, new_name)
+        SessionState.refresh_gallery()
+
     def update_metadata(self, name: str, **change) -> dict:
         return self.api.update_image_metadata(name, self.api.metadata_change(**change))
 
@@ -71,6 +76,7 @@ class HiddenActions(GalleryActions):
 
     shows_favorites = False
     allows_hiding = False
+    allows_renaming = False
 
     def menu_actions(self) -> list[MenuAction]:
         return [MenuAction(":material/visibility:", "unhide", self.restore)]

@@ -68,6 +68,11 @@ class LunaVisiaAPI:
     def delete_image(self, name: str) -> None:
         self.request("DELETE", self.image_path("/api/images", name))
 
+    def rename_image(self, name: str, new_name: str) -> dict[str, Any]:
+        return self.request(
+            "POST", self.image_path("/api/images", name, "/rename"), json={"new_name": new_name}
+        ).json()
+
     def update_image_metadata(self, name: str, payload: dict) -> dict[str, Any]:
         return self.request(
             "POST", self.image_path("/api/images", name, "/metadata"), json=payload
