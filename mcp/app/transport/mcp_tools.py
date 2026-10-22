@@ -224,6 +224,19 @@ class VisiaMCPTools:
             )
 
         @server.tool()
+        async def get_gallery_stats(top_tags: int = 10) -> dict[str, Any]:
+            """Return statistics for the visible library, computed from stored metadata.
+
+            Includes total_images, favorite_count, ai_generated_count (images
+            tagged "ai info" because embedded provenance marks them as AI-made),
+            ai_modified_count (images replaced via modify_image), total and
+            average size, the largest image, a count per file format,
+            unique_tag_count, the top_tags most used tags, and the oldest and
+            newest updated_at. Hidden images are not counted.
+            """
+            return await offload(visible.stats, top_tags)
+
+        @server.tool()
         async def backfill_metadata() -> dict[str, Any]:
             """Analyze files missing current metadata; idempotent by hash/model.
 

@@ -252,6 +252,13 @@ class MCPToolTests(ServerTestCase):
         self.assertEqual((added["status"], added["count"]), ("favorited", 2))
         self.assertEqual((removed["status"], removed["names"]), ("unfavorited", ["one.png"]))
 
+    def test_get_gallery_stats_counts_visible_images(self) -> None:
+        self.call("set_favorite_images", {"names": ["one.png"], "favorite": True})
+        self.service.hidden.set_hidden(["two.png"], True)
+        stats = self.call("get_gallery_stats", {})
+        self.assertEqual((stats["total_images"], stats["favorite_count"]), (1, 1))
+        self.assertEqual(stats["largest_image"]["name"], "one.png")
+
     def test_fetch_images_rejects_hidden_images(self) -> None:
         self.service.hidden.set_hidden(["one.png"], True)
         with self.assertRaises(Exception):

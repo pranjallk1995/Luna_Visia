@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -437,6 +438,57 @@ class VisibleImageService(ImageCollectionService):
 
     def favorites(self) -> list[Row]:
         return self.images.list_favorites()
+
+    def stats(self, top_tags: int = 10) -> dict[str, Any]:
+        """Summarize the visible library from stored metadata, without opening files.
+
+        AI counts follow the system tags: ``ai info`` marks images whose embedded
+        provenance says AI made them, ``ai modified`` marks replaced images.
+        """
+        rows = self.list()
+        total_bytes = sum(row["size_bytes"] for row in rows)
+        formats = Counter(Path(row["name"]).suffix.lstrip(".").lower() or "unknown" for row in rows)
+        tags = Counter(tag for row in rows for tag in row["tags"])
+        largest = max(rows, key=lambda row: row["size_bytes"], default=None)
+        updated = sorted(str(row["updated_at"]) for row in rows)
+        return {
+            "total_images": len(rows),
+            "favorite_count": sum(1 for row in rows if row["favorite"]),
+            "ai_generated_count": sum(1 for row in rows if ImageIndexer.AI_INFO_TAG in row["tags"]),
+            "ai_modified_count": sum(
+                1 for row in rows if ImageIndexer.AI_MODIFIED_TAG in row["tags"]
+            ),
+            "total_size_bytes": total_bytes,
+            "total_size": self.human_bytes(total_bytes),
+            "average_size_bytes": total_bytes // len(rows) if rows else 0,
+            "largest_image": (
+                {
+                    "name": largest["name"],
+                    "size_bytes": largest["size_bytes"],
+                    "size": self.human_bytes(largest["size_bytes"]),
+                }
+                if largest
+                else None
+            ),
+            "formats": dict(formats.most_common()),
+            "unique_tag_count": len(tags),
+            "top_tags": [
+                {"tag": tag, "count": count}
+                for tag, count in tags.most_common(max(top_tags, 0))
+            ],
+            "oldest_updated_at": updated[0] if updated else None,
+            "newest_updated_at": updated[-1] if updated else None,
+        }
+
+    @staticmethod
+    def human_bytes(size: int) -> str:
+        """Format a byte count with the largest binary unit that keeps it >= 1."""
+        value = float(size)
+        for unit in ("B", "KiB", "MiB", "GiB"):
+            if value < 1024:
+                return f"{size} B" if unit == "B" else f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{value:.1f} TiB"
 
     def list_page(self, limit: int, offset: int, max_limit: int) -> dict[str, Any]:
         """Return one page of compact image summaries, newest first."""

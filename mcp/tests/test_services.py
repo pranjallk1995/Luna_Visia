@@ -430,6 +430,36 @@ class HiddenAndFavoriteTests(VisiaServiceTestCase):
         self.hidden.set_hidden(["cat.png"], True)
         self.assertEqual(self.visible.favorites(), [])
 
+    def test_stats_summarize_visible_library_only(self):
+        self.visible.upload("generated.png", c2pa_png())
+        self.visible.ingest("cat.png", png_payload())
+        self.visible.ingest("cat.png", png_payload("blue"), replace=True)
+        self.visible.ingest("secret.png", png_payload("green"))
+        self.visible.set_favorite(["cat.png"], True)
+        self.hidden.set_hidden(["secret.png"], True)
+        stats = self.visible.stats(top_tags=2)
+        rows = self.visible.list()
+        self.assertEqual(stats["total_images"], 2)
+        self.assertEqual(stats["favorite_count"], 1)
+        self.assertEqual(stats["ai_generated_count"], 1)
+        self.assertEqual(stats["ai_modified_count"], 1)
+        self.assertEqual(stats["total_size_bytes"], sum(row["size_bytes"] for row in rows))
+        self.assertEqual(stats["formats"], {"png": 2})
+        self.assertEqual(stats["top_tags"], [{"tag": "cat", "count": 2}, {"tag": "sofa", "count": 2}])
+        self.assertEqual(stats["unique_tag_count"], 4)
+
+    def test_stats_for_empty_library(self):
+        stats = self.visible.stats()
+        self.assertEqual(stats["total_images"], 0)
+        self.assertEqual(stats["total_size"], "0 B")
+        self.assertIsNone(stats["largest_image"])
+        self.assertIsNone(stats["newest_updated_at"])
+
+    def test_human_bytes_picks_readable_unit(self):
+        self.assertEqual(self.visible.human_bytes(512), "512 B")
+        self.assertEqual(self.visible.human_bytes(1536), "1.5 KiB")
+        self.assertEqual(self.visible.human_bytes(3 * 1024**3), "3.0 GiB")
+
 
 class ChatUploadTests(VisiaServiceTestCase):
     def test_tolerant_base64_variants_are_accepted(self):
