@@ -6,6 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL included](https://img.shields.io/badge/PostgreSQL-included-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
+![Status: usable](https://img.shields.io/badge/Status-usable-2EA043)
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
 > **Work in progress:** Luna Visia is a local-first and desktop-first image store and search under active development.
