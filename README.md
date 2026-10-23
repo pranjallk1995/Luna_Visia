@@ -3,20 +3,20 @@
 ![Docker required](https://img.shields.io/badge/Docker-required-2496ED?logo=docker&logoColor=white)
 ![Docker Compose v2](https://img.shields.io/badge/Docker_Compose-v2-2496ED?logo=docker&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![Ollama included](https://img.shields.io/badge/Ollama-included-111111?logo=ollama&logoColor=white)
+![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL included](https://img.shields.io/badge/PostgreSQL-included-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
 > **Work in progress:** Luna Visia is a local-first and desktop-first image store and search under active development.
 
-Luna Visia is an AI-powered, private image library that runs locally. Its Ollama
-vision model analyzes every upload automatically, creates a concise caption and
+Luna Visia is an AI-powered, private image library that runs locally. A local
+Ollama vision model, served by [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia), analyzes every upload automatically, creates a concise caption and
 searchable tags, and stores that metadata in PostgreSQL. FastMCP makes the indexed
 collection available to AI assistants of your choice (ChatGPT here) for fast search and safe image-management
 operations without repeatedly opening every original image.
 
-> **GPU requirement for the default model:** Luna Visia uses `qwen2.5vl:7b` by default. Its download is larger than 6 GB, and the default GPU configuration requires an NVIDIA GPU with at least 8 GB of VRAM. Follow [Start](#start) to use the default setup. To select a different model—or use the slower CPU fallback—see [Vision model](#vision-model); model overrides can be placed in a local `.env` file.
+> **Requires Luna Sentia:** Ollama and its models now run in [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia), a standalone stack shared by every Luna app. Start Sentia first: it serves the model and creates the shared `luna_sentia_network` that Visia joins. Visia uses `qwen2.5vl:7b` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
 
 <p align="center">
   <img src="docs/assets/luna-visia-ai-assistant.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -84,10 +84,10 @@ through natural-language requests.
 
 ### Local AI and assistant access
 
-- Run PostgreSQL, Ollama, MCP/API, Streamlit, and Adminer as one local Docker Compose stack.
+- Run PostgreSQL, MCP/API, and Streamlit as one local Docker Compose stack, using the Ollama and Adminer services from Luna Sentia.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
-- Keep Ollama and PostgreSQL private to the Compose network while binding UI, MCP, and Adminer ports to localhost.
-- Use an optional NVIDIA GPU for vision analysis, with a slower CPU fallback.
+- Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
+- Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback.
 
 ## Architecture
 
@@ -96,11 +96,11 @@ through natural-language requests.
 | UI | Streamlit | Upload, search, galleries, Favorites, downloads, and authenticated hidden-image workflows |
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
-| Vision | Ollama | Local caption and tag generation with `qwen2.5vl:7b` by default |
+| Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen2.5vl:7b` by default |
 | Database | PostgreSQL 17 | Metadata, full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
-| Storage | Docker volumes | Original images, PostgreSQL data, and downloaded Ollama models |
-| Database UI | Adminer | Local inspection of the Luna Visia PostgreSQL database |
-| Network | `lunavisia_network` | Private service discovery using project-specific aliases |
+| Storage | Docker volumes | Original images and PostgreSQL data; Ollama models live in Luna Sentia's volume |
+| Database UI | Adminer in Luna Sentia | Local inspection of every Luna PostgreSQL database on the shared network |
+| Network | `luna_sentia_network` (external) | Shared private network created by Luna Sentia; services use project-specific aliases |
 
 The main service flow is:
 
@@ -108,12 +108,23 @@ The main service flow is:
 Streamlit UI or MCP client
         -> Luna Visia MCP/API
         -> image volume + PostgreSQL metadata
-        -> Ollama vision analysis when image content changes
+        -> Luna Sentia Ollama (luna-sentia-ollama) when image content changes
 ```
 
 The UI reads original images from `image_data` as read-only. All mutations go through the MCP/API service so file and database changes remain coordinated.
 
 ## Start
+
+Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first. It runs Ollama, pulls the models, and
+creates the external `luna_sentia_network` that Visia joins:
+
+```sh
+cd ../Luna_Sentia && docker compose up -d
+```
+
+To start Sentia and every Luna app together, with or without Compose Watch, use
+`../luna.sh start [--watch]`; see the
+[Sentia README](https://github.com/pranjallk1995/Luna_Sentia#start-everything).
 
 Create a private `.env`:
 
@@ -176,33 +187,40 @@ The API token and Google-account allowlist have no defaults and must be set in
 
 Docker is not started automatically by repository setup or validation.
 
-Compose automatically pulls the configured vision model into the persistent
-`ollama_data` volume before starting MCP. Open Luna Visia at
+Luna Sentia pulls the vision model; make sure `VISION_MODEL` is listed in
+Sentia's `SENTIA_MODELS`. Open Luna Visia at
 <http://127.0.0.1:18501>. After signing in with an allowlisted Google account,
 the Hidden Images tab opens directly without another password or PIN prompt.
 
 Check GPU use while analysis is active:
 
 ```sh
-docker compose exec ollama ollama ps
+docker compose -f ../Luna_Sentia/docker-compose.yaml exec ollama ollama ps
 nvidia-smi
 ```
 
-If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service to use the CPU fallback. Captioning will still work but will be slower.
+If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service in Luna Sentia to use the CPU fallback. Captioning will still work but will be slower.
 
 ## Vision model
 
 The default model is `qwen2.5vl:7b`. To use a different Ollama vision model,
-set `VISION_MODEL` before starting the stack. For example, use Llama 3.2 Vision 11B:
+add it to `SENTIA_MODELS` in Luna Sentia's `.env`, restart Sentia so it pulls
+the model, then set `VISION_MODEL` in Visia's `.env`. For example, use Llama 3.2
+Vision 11B:
 
-```sh
-export VISION_MODEL=llama3.2-vision:11b
+```dotenv
+# Luna_Sentia/.env
+SENTIA_MODELS=qwen2.5vl:7b llama3.2-vision:11b
+
+# Luna_Visia/.env
+VISION_MODEL=llama3.2-vision:11b
 ```
 
-Ollama runs only on the private Compose network. No API key or external image
-service is used. The `ollama-pull` Compose service downloads the selected model
-once into the persistent `ollama_data` volume, and MCP waits for that step to
-finish before it starts.
+Visia reaches Ollama at `http://luna-sentia-ollama:11434` on the shared
+`luna_sentia_network`; override it with `OLLAMA_URL` if needed. Ollama is never
+published on a host port, and no API key or external image service is used.
+Visia does not wait for the model at startup: uploads made before Sentia has
+finished pulling it fail until the model is available.
 
 ## Codex MCP configuration (optional)
 
@@ -221,15 +239,15 @@ A task that was already open before a new tool was added may need to be reloaded
 
 ## Database UI
 
-Adminer is available at <http://127.0.0.1:19080> after starting the stack. Use:
+Use [Adminer in Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia#database-ui) at
+<http://127.0.0.1:19080>. It reaches every Luna database over the shared private
+`luna_sentia_network`; the database port itself remains unavailable from the host. Use:
 
 - System: `PostgreSQL`
-- Server: `postgres`
+- Server: `luna-visia-db` (the other Luna apps' databases are reachable by their aliases, such as `luna-vita-db`)
 - Username: `lunavisia`
 - Password: your `POSTGRES_PASSWORD`, or `lunavisia-dev` when unset
 - Database: `lunavisia`
-
-Adminer is bound to localhost and reaches PostgreSQL only through the private Luna Visia network. The database port itself remains unavailable from the host.
 
 ## MCP tools
 
@@ -326,7 +344,7 @@ Luna Vita, Luna Lumia, and Luna Visia share this layout:
 
 ```text
 .
-├── docker-compose.yaml     # services, private network, and Compose Watch rules
+├── docker-compose.yaml     # services, shared-network membership, and Compose Watch rules
 ├── README.md
 ├── UI_STYLE_GUIDE.md       # shared Luna visual reference
 ├── docs/assets/            # README screenshots
@@ -369,7 +387,7 @@ them automatically. MCP source changes are synchronized into `/workspace/mcp`
 and restart only the MCP service so newly registered tools become available from
 the server. Changes to either service's `requirements.txt` or `Dockerfile`
 rebuild that service. Python caches, test caches, and MCP tests are ignored by the
-runtime watcher. Named image, database, and Ollama volumes are never watched or
+runtime watcher. Named image and database volumes are never watched or
 synchronized.
 
 Compose Watch is a foreground process and must remain running for source sync.

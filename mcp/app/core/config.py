@@ -81,7 +81,7 @@ class AppConfig:
         database_url = os.getenv("DATABASE_URL", "").strip()
         if not database_url:
             raise RuntimeError("DATABASE_URL is required.")
-        ollama_url = os.getenv("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+        ollama_url = os.getenv("OLLAMA_URL", "http://luna-sentia-ollama:11434").rstrip("/")
         parsed = urlparse(ollama_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise RuntimeError("OLLAMA_URL must be a valid HTTP(S) URL.")

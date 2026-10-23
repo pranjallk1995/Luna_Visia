@@ -9,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      lunavisia_network:
+      sentia_network:
         aliases:
           - luna-visia-db
     healthcheck:
@@ -18,54 +18,6 @@ services:
       timeout: 5s
       retries: 5
 
-  adminer:
-    image: adminer:latest
-    restart: unless-stopped
-    environment:
-      ADMINER_DEFAULT_SERVER: luna-visia-db
-    ports:
-      - "127.0.0.1:19080:8080"
-    networks:
-      lunavisia_network:
-        aliases:
-          - luna-visia-adminer
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    gpus: all
-    expose:
-      - "11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      lunavisia_network:
-        aliases:
-          - luna-visia-ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  ollama-pull:
-    image: ollama/ollama:latest
-    command: ["pull", "${VISION_MODEL:-qwen2.5vl:7b}"]
-    environment:
-      OLLAMA_HOST: http://luna-visia-ollama:11434
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      lunavisia_network:
-        aliases:
-          - luna-visia-model-pull
-    depends_on:
-      ollama:
-        condition: service_healthy
-
   mcp:
     build: ./mcp
     working_dir: /workspace/mcp
@@ -73,8 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-visia-db:5432/lunavisia
       IMAGE_DIR: /data/images
-      OLLAMA_URL: http://luna-visia-ollama:11434
-      VISION_MODEL: ${VISION_MODEL}
+      OLLAMA_URL: ${OLLAMA_URL:-http://luna-sentia-ollama:11434}
+      VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
       LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL}
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-http://localhost:18000}
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
@@ -102,16 +54,12 @@ services:
         - action: rebuild
           path: ./mcp/Dockerfile
     networks:
-      lunavisia_network:
+      sentia_network:
         aliases:
           - luna-visia-mcp
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-pull:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 10s
@@ -150,7 +98,7 @@ services:
         - action: rebuild
           path: ./ui/Dockerfile
     networks:
-      lunavisia_network:
+      sentia_network:
         aliases:
           - luna-visia-ui
     depends_on:
@@ -164,9 +112,8 @@ volumes:
     name: luna_visia_image_data
   download_data:
     name: luna_visia_download_data
-  ollama_data:
 
 networks:
-  lunavisia_network:
-    name: luna_visia_lunavisia_network
-    driver: bridge
+  sentia_network:
+    external: true
+    name: luna_sentia_network
