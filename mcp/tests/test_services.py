@@ -100,6 +100,11 @@ class IngestTests(VisiaServiceTestCase):
         self.assertEqual(result["tags"], ["cat", "sofa", "ai modified"])
         self.assertEqual(result["tags"].count("ai modified"), 1)
 
+    def test_analysis_graph_describes_and_checks_provenance_in_parallel(self):
+        graph = self.service.indexer.graph.graph.get_graph()
+        self.assertEqual({edge.target for edge in graph.edges if edge.source == "__start__"}, {"describe", "check_provenance"})
+        self.assertEqual({edge.source for edge in graph.edges if edge.target == "tag"}, {"describe", "check_provenance"})
+
     def test_backfill_skips_current_records(self):
         self.visible.ingest("cat.png", png_payload())
         Image.new("RGB", (4, 3), "green").save(self.root / "dog.png")

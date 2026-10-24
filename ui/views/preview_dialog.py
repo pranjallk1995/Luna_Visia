@@ -85,7 +85,9 @@ class ImagePreviewDialog:
         self.metadata_by_name = metadata_by_name
 
     def open(self, image_path: Path) -> None:
-        @st.dialog(self.files.display_name(image_path.name), width="large")
+        # Closing with the X reruns the app, so the server knows the dialog closed and the
+        # next thumbnail opens on its first click instead of needing a second one.
+        @st.dialog(self.files.display_name(image_path.name), width="large", on_dismiss="rerun")
         def show_full_size_image() -> None:
             self._render(image_path)
 

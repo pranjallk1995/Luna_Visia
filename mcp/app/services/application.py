@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.core.config import AppConfig
+from app.services.analysis_graph import ImageAnalysisGraph
 from app.services.downloads import DownloadStore, DownloadTicket
 from app.services.inspection import ImageInspector
 from app.services.media import ImagePayloadDecoder, PreviewRenderer
@@ -97,11 +98,14 @@ class PublicURLService:
 
 
 class ImageIndexer:
-    """Generate AI metadata for image bytes and persist it with content identity."""
+    """Generate AI metadata for image bytes and persist it with content identity.
 
-    AI_MODIFIED_TAG = "ai modified"
-    # Marks images whose embedded provenance (C2PA, XMP, generator fields) says AI made them.
-    AI_INFO_TAG = "ai info"
+    Analysis runs as the ``ImageAnalysisGraph``: the vision model and the
+    provenance check in parallel, then system tagging.
+    """
+
+    AI_MODIFIED_TAG = ImageAnalysisGraph.AI_MODIFIED_TAG
+    AI_INFO_TAG = ImageAnalysisGraph.AI_INFO_TAG
 
     def __init__(
         self,
@@ -118,20 +122,11 @@ class ImageIndexer:
         self.urls = urls
         self.inspector = inspector
         self.rules = rules
-
-    def system_tags(self, data: bytes, modified: bool = False) -> list[str]:
-        tags = [self.AI_MODIFIED_TAG] if modified else []
-        if self.inspector.is_ai_generated(data):
-            tags.append(self.AI_INFO_TAG)
-        return tags
+        self.graph = ImageAnalysisGraph(analyzer, inspector, rules)
 
     def analyze(self, data: bytes, modified: bool = False) -> ImageAnalysis:
         """Analyze bytes, tagging replacements and AI-generated images."""
-        analysis = self.analyzer.analyze(data)
-        extra = self.system_tags(data, modified)
-        if extra:
-            analysis = analysis.model_copy(update={"tags": self.rules.with_tags(analysis.tags, extra)})
-        return analysis
+        return self.graph.run(data, modified)
 
     def store(self, name: str, data: bytes, analysis: ImageAnalysis) -> Row:
         record = ImageRecord(

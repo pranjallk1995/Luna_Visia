@@ -1,5 +1,6 @@
 mcp==1.30.0
 pydantic==2.11.7
+langgraph==1.2.17
 Pillow==11.3.0
 psycopg[binary]==3.2.10
 httpx==0.28.1

@@ -62,6 +62,7 @@ through natural-language requests.
 
 - Upload images through the Streamlit UI or MCP tools.
 - Generate a concise caption and normalized searchable tags with the local Ollama vision model.
+- Run the vision model and the embedded-provenance check as parallel branches of a LangGraph graph (`mcp/app/services/analysis_graph.py`) that then adds the `ai modified` and `ai info` system tags.
 - Preserve the content hash, source size, analysis model, timestamps, and optional public URL in PostgreSQL.
 - Replace image content and refresh its metadata as one coordinated operation.
 - Backfill missing or stale metadata for files imported outside the normal upload flow.
