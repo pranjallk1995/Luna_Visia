@@ -161,7 +161,7 @@ leave it blank when stable public image URLs are not needed.
 
 Visia signs people in through Luna Sentia's single sign-on: one Google sign-in at
 Sentia opens every Luna app, and **Sign out** in any app signs out of all of them.
-Visia needs no Google client or `secrets.toml` of its own. Set in `.env`:
+Visia needs no Google client of its own. Set in `.env`:
 
 - `LUNA_SSO_URL`: Sentia's public sign-on address (`SENTIA_AUTH_PUBLIC_URL` in
   Sentia's `.env`), for example `https://auth.lunaapps.fyi`.

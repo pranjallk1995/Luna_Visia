@@ -99,7 +99,7 @@ The right column holds the app's main controls, ending with **Sign out**:
 Shared rules:
 
 - **Sign out** is always the last control. It is `st.button("Sign out",
-  icon=":material/logout:", key="header_sign_out", on_click=st.logout)`. The key
+  icon=":material/logout:", key="header_sign_out", on_click=LunaSingleSignOn.sign_out)`. The key
   must be exactly `header_sign_out`, because the mobile CSS targets it.
 - The app's main action is the widest control and uses `type="primary"`.
 - Icon-only buttons (view toggles, refresh) use a Material icon and no label.
