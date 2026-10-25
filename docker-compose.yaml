@@ -49,6 +49,8 @@ services:
     working_dir: /workspace/ui
     restart: unless-stopped
     environment:
+      LUNA_SSO_URL: ${LUNA_SSO_URL:?Set LUNA_SSO_URL to Luna Sentia's public sign-on address}
+      LUNA_SSO_INTERNAL_URL: ${LUNA_SSO_INTERNAL_URL:-http://luna-sentia-auth:8000}
       IMAGE_DIR: /data/images
       MCP_URL: http://luna-visia-mcp:8000/mcp
       LUNAVISIA_API_URL: http://luna-visia-mcp:8000
@@ -58,7 +60,6 @@ services:
       - "127.0.0.1:18501:8501"
     volumes:
       - image_data:/data/images:ro
-      - ./ui/.streamlit/secrets.toml:/workspace/ui/.streamlit/secrets.toml:ro
     develop:
       watch:
         - action: sync

@@ -25,7 +25,7 @@ operations without repeatedly opening every original image.
 
 The Streamlit interface lets you upload, search, view, favorite, download, hide,
 restore, and delete images. Image data, metadata, and AI models persist in Docker volumes,
-while OAuth-gated hidden images stay separate from normal galleries and searches.
+while sign-in-gated hidden images stay separate from normal galleries and searches.
 
 <p align="center">
   <img src="docs/assets/luna-visia-image-view.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -157,19 +157,21 @@ Separate multiple emails with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
-### Google OAuth settings
+### Sign-in
 
-1. Create a Google OAuth 2.0 **Web application** client.
-2. Add `http://localhost:18501/oauth2callback`.
-3. Copy `ui/.streamlit/secrets.example.toml` to
-   `ui/.streamlit/secrets.toml`.
-4. Set `redirect_uri`, `cookie_secret`, `client_id`, and `client_secret`.
-   Keep `server_metadata_url` unchanged. The redirect value must exactly match
-   the URL used to open Visia.
+Visia signs people in through Luna Sentia's single sign-on: one Google sign-in at
+Sentia opens every Luna app, and **Sign out** in any app signs out of all of them.
+Visia needs no Google client or `secrets.toml` of its own. Set in `.env`:
 
-Keep OAuth credentials only in the gitignored secrets file. Do not reuse
-secrets. The `.env` allowlist is an additional authorization check after
-Google verifies the account.
+- `LUNA_SSO_URL`: Sentia's public sign-on address (`SENTIA_AUTH_PUBLIC_URL` in
+  Sentia's `.env`), for example `https://auth.lunaapps.fyi`.
+- `LUNA_SSO_INTERNAL_URL`: `http://luna-sentia-auth:8000`, where Visia checks
+  sessions over `luna_sentia_network`.
+- `LUNAVISIA_ALLOWED_EMAILS`: the accounts allowed into Visia, checked
+  after Sentia confirms who is signed in.
+
+Sentia's auth service must be healthy before Visia can sign anyone in; see
+[Single sign-on](https://github.com/pranjallk1995/Luna_Sentia#single-sign-on) for its setup.
 
 Start Luna Visia:
 
@@ -332,7 +334,7 @@ The filename remains the storage key matching the image in the persistent `image
 ### `vault_security`
 
 Legacy hidden-vault credential data may remain in upgraded databases for
-compatibility, but the OAuth-gated Hidden Images UI no longer reads or updates it.
+compatibility, but the sign-in-gated Hidden Images UI no longer reads or updates it.
 
 ### `vault_config`
 
@@ -410,6 +412,7 @@ change so the client refreshes its discovered tool catalog.
 
 ### UI modules
 
+- `ui/sso.py` - single sign-on through Luna Sentia: reads the shared `luna_sso` cookie, checks it with Sentia, and applies the allowlist.
 - `ui/app.py` - `LunaVisiaApp` composition root: header, `GalleryNavigation`, and the upload dialog; each section is a tab class.
 - `ui/services/api.py` - `LunaVisiaAPI` keeps backend routes, the private service credential, timeouts, and error text out of the views.
 - `ui/config.py` - `UIConfig` reads UI environment settings such as the API URL, API token, allowed Google accounts, image directory, gallery size, and supported image formats.
@@ -421,7 +424,7 @@ change so the client refreshes its discovered tool catalog.
 - `ui/views/actions.py` - `GalleryActions`, `FavoriteActions`, and `HiddenActions`: what each section's gallery may do with an image.
 - `ui/views/pager.py` - `GalleryPager`, pagination with the animated page transition.
 - `ui/views/preview_dialog.py` - `ImagePreviewDialog`, full-size viewing with inline caption and tag editing.
-- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; all are rendered only after the shared OAuth gate.
+- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; all are rendered only after the shared sign-in gate.
 - `ui/views/upload_dialog.py` - `UploadDialog`: upload handling, progress feedback, retries, and newly generated captions and tags.
 - `ui/views/__init__.py`, `ui/services/__init__.py` - mark the view and service directories as Python packages.
 - `ui/.streamlit/config.toml` - Streamlit theme settings.
@@ -444,7 +447,7 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/app/core/models.py` - `ImageAnalysis`, `ImageRecord`, `MetadataChange`, and `MetadataRules` (caption, tag, and search-text normalization).
 - `mcp/app/integrations/vision.py` - `OllamaVisionAnalyzer`, local vision-model requests.
 - `mcp/app/transport/branding.py` - `ServerBranding`, the bundled icon set in `mcp/app/assets/` (favicon plus PNG sizes) exposed as MCP server-info icons and HTTP icon routes.
-- `mcp/app/transport/auth.py` - constant-time bearer authentication for OAuth-gated UI requests to Hidden Images routes.
+- `mcp/app/transport/auth.py` - constant-time bearer authentication for signed-in UI requests to Hidden Images routes.
 - `mcp/app/transport/security.py` - legacy password/PIN authentication retained only for database compatibility and migration history.
 - `mcp/app/core/config.py` - reads and validates MCP settings, including database, image, Ollama, and vision-model configuration.
 - `mcp/app/__init__.py` - marks the MCP application directory as a Python package.

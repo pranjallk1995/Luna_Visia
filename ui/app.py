@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
-from auth import OIDCAuthentication
+from sso import LunaSingleSignOn
 from config import UIConfig
 from services.state import SessionState
 from styles import LunaStyle
@@ -146,7 +146,7 @@ class LunaVisiaApp:
                 "Sign out",
                 icon=":material/logout:",
                 key="header_sign_out",
-                on_click=st.logout,
+                on_click=LunaSingleSignOn.sign_out,
                 width="stretch",
             )
             return open_upload
@@ -155,7 +155,7 @@ class LunaVisiaApp:
         SessionState.initialize()
         self.show_reload_notice()
         LunaStyle.apply(st.session_state.color_theme)
-        OIDCAuthentication(self.config.allowed_emails).require_login(
+        LunaSingleSignOn(self.config.allowed_emails).require_login(
             "Luna Visia", "Private AI-managed image storage"
         )
         open_upload = self.render_header()
