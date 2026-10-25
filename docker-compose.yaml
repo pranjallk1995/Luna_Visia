@@ -1,29 +1,10 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg17
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: lunavisia
-      POSTGRES_USER: lunavisia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lunavisia-dev}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      sentia_network:
-        aliases:
-          - luna-visia-db
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lunavisia -d lunavisia"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   mcp:
     build: ./mcp
     working_dir: /workspace/mcp
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-visia-db:5432/lunavisia
+      DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-sentia-db:5432/lunavisia
       IMAGE_DIR: /data/images
       OLLAMA_URL: ${OLLAMA_URL:-http://luna-sentia-ollama:11434}
       VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
@@ -57,9 +38,6 @@ services:
       sentia_network:
         aliases:
           - luna-visia-mcp
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 10s
@@ -106,8 +84,6 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres_data:
-    name: luna_visia_postgres_data
   image_data:
     name: luna_visia_image_data
   download_data:

@@ -4,7 +4,7 @@
 ![Docker Compose v2](https://img.shields.io/badge/Docker_Compose-v2-2496ED?logo=docker&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
-![PostgreSQL included](https://img.shields.io/badge/PostgreSQL-included-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
 ![Status: usable](https://img.shields.io/badge/Status-usable-2EA043)
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
@@ -17,7 +17,7 @@ searchable tags, and stores that metadata in PostgreSQL. FastMCP makes the index
 collection available to AI assistants of your choice (ChatGPT here) for fast search and safe image-management
 operations without repeatedly opening every original image.
 
-> **Requires Luna Sentia:** Ollama and its models now run in [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia), a standalone stack shared by every Luna app. Start Sentia first: it serves the model and creates the shared `luna_sentia_network` that Visia joins. Visia uses `qwen2.5vl:7b` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
+> **Requires Luna Sentia, running and healthy:** Luna Visia keeps its data in Luna Sentia's PostgreSQL (`luna-sentia-db`) and joins Sentia's `luna_sentia_network`; it has no database of its own. Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until its `postgres` and `ollama` services report healthy, as described under [Start](#start). Sentia also serves the model: Visia uses `qwen2.5vl:7b` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
 
 <p align="center">
   <img src="docs/assets/luna-visia-ai-assistant.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -86,7 +86,7 @@ through natural-language requests.
 
 ### Local AI and assistant access
 
-- Run PostgreSQL, MCP/API, and Streamlit as one local Docker Compose stack, using the Ollama and Adminer services from Luna Sentia.
+- Run MCP/API and Streamlit as one local Docker Compose stack, using the PostgreSQL, Ollama, and Adminer services from Luna Sentia.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
 - Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback.
@@ -99,9 +99,9 @@ through natural-language requests.
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
 | Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen2.5vl:7b` by default |
-| Database | PostgreSQL 17 | Metadata, full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
-| Storage | Docker volumes | Original images and PostgreSQL data; Ollama models live in Luna Sentia's volume |
-| Database UI | Adminer in Luna Sentia | Local inspection of every Luna PostgreSQL database on the shared network |
+| Database | PostgreSQL 17 in Luna Sentia (`luna-sentia-db`) | Metadata, full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
+| Storage | Docker volumes | Original images; the database and Ollama models live in Luna Sentia's volumes |
+| Database UI | Adminer in Luna Sentia | Local inspection of every Luna app's database on `luna-sentia-db` |
 | Network | `luna_sentia_network` (external) | Shared private network created by Luna Sentia; services use project-specific aliases |
 
 The main service flow is:
@@ -117,12 +117,20 @@ The UI reads original images from `image_data` as read-only. All mutations go th
 
 ## Start
 
-Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first. It runs Ollama, pulls the models, and
-creates the external `luna_sentia_network` that Visia joins:
+Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until it is healthy. Sentia runs
+the PostgreSQL server that holds Visia's `lunavisia` database, serves the models,
+and creates the shared `luna_sentia_network` every Luna app joins. Visia has no
+database of its own: started before Sentia is healthy, it cannot reach its
+data and keeps restarting until it can.
 
 ```sh
-cd ../Luna_Sentia && docker compose up -d
+cd ../Luna_Sentia
+docker compose up -d --wait postgres ollama adminer
+docker compose run --rm postgres-init   # creates the lunavisia role and database
+docker compose ps                       # postgres and ollama must show (healthy)
 ```
+
+See [Is Sentia healthy?](https://github.com/pranjallk1995/Luna_Sentia#is-sentia-healthy) if they do not.
 
 To start Sentia and every Luna app together, with or without Compose Watch, use
 `../luna.sh start [--watch]`; see the
@@ -131,6 +139,7 @@ To start Sentia and every Luna app together, with or without Compose Watch, use
 Create a private `.env`:
 
 ```dotenv
+# Must equal LUNAVISIA_DB_PASSWORD in Luna_Sentia/.env
 POSTGRES_PASSWORD=replace-with-a-private-database-password
 VISION_MODEL=qwen2.5vl:7b
 LUNAVISIA_PUBLIC_BASE_URL=
@@ -182,7 +191,7 @@ The example keeps these development defaults:
 | Database | `lunavisia` |
 | Username | `lunavisia` |
 | Password | `lunavisia-dev` |
-| Database host inside Docker | `luna-visia-db` |
+| Database host inside Docker | `luna-sentia-db` |
 
 The API token and Google-account allowlist have no defaults and must be set in
 `.env` before Compose starts the application.
@@ -246,7 +255,7 @@ Use [Adminer in Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia#databa
 `luna_sentia_network`; the database port itself remains unavailable from the host. Use:
 
 - System: `PostgreSQL`
-- Server: `luna-visia-db` (the other Luna apps' databases are reachable by their aliases, such as `luna-vita-db`)
+- Server: `luna-sentia-db` (the same server holds every Luna app's database)
 - Username: `lunavisia`
 - Password: your `POSTGRES_PASSWORD`, or `lunavisia-dev` when unset
 - Database: `lunavisia`
