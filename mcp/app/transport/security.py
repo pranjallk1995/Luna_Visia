@@ -8,12 +8,11 @@ import threading
 import time
 
 from app.data.repositories import CredentialRepository, StoredCredentials
+from app.core.config import AppConfig
 
 
 class CredentialPolicy:
     """Validate and hash Hidden Vault secrets."""
-
-    SALT_BYTES = 16
 
     def __init__(self, iterations: int) -> None:
         self.iterations = iterations
@@ -35,7 +34,7 @@ class CredentialPolicy:
 
     def new_hash(self, value: str) -> tuple[bytes, bytes]:
         """Return a fresh salt and the hash of ``value`` with it."""
-        salt = secrets.token_bytes(self.SALT_BYTES)
+        salt = secrets.token_bytes(AppConfig.CREDENTIAL_SALT_BYTES)
         return salt, self.hash(value, salt, self.iterations)
 
     def matches(self, value: str, salt: bytes, expected: bytes, iterations: int) -> bool:

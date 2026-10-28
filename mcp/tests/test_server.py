@@ -573,7 +573,7 @@ class DownloadRouteTests(ServerTestCase):
         leftover.write_bytes(b"orphan")
         store.purge()
         self.assertTrue(leftover.exists())
-        old = time.time() - store.LEFTOVER_GRACE_SECONDS - 1
+        old = time.time() - AppConfig.DOWNLOAD_LEFTOVER_GRACE_SECONDS - 1
         os.utime(leftover, (old, old))
         store.purge()
         self.assertFalse(leftover.exists())

@@ -34,7 +34,7 @@ class ImageFiles:
         return self.image_dir / name
 
     @staticmethod
-    @st.cache_data(show_spinner=False, max_entries=256)
+    @st.cache_data(show_spinner=False, max_entries=UIConfig.THUMBNAIL_CACHE_ENTRIES)
     def _thumbnail(image_path: str, modified_ns: int, max_size: tuple[int, int]) -> Image.Image:
         del modified_ns
         with Image.open(image_path) as source:
@@ -45,7 +45,7 @@ class ImageFiles:
             )
 
     @staticmethod
-    @st.cache_data(show_spinner=False, max_entries=64)
+    @st.cache_data(show_spinner=False, max_entries=UIConfig.PREVIEW_CACHE_ENTRIES)
     def _full_preview(image_path: str, modified_ns: int) -> Image.Image:
         del modified_ns
         with Image.open(image_path) as source:
@@ -54,7 +54,7 @@ class ImageFiles:
             return preview.copy()
 
     @staticmethod
-    @st.cache_data(show_spinner=False, max_entries=256)
+    @st.cache_data(show_spinner=False, max_entries=UIConfig.FACTS_CACHE_ENTRIES)
     def _facts(image_path: str, modified_ns: int) -> tuple[int, int, int]:
         del modified_ns
         path = Path(image_path)

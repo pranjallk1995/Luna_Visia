@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.services.media import ImageArchive
+from app.core.config import AppConfig
 
 
 @dataclass(frozen=True)
@@ -38,9 +39,6 @@ class DownloadStore:
     FILE_NAME = "luna-visia-images.zip"
     TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
     NOT_FOUND_MESSAGE = "This download link has expired or does not exist."
-    # Leftovers without a ticket are only removed once clearly abandoned, so a
-    # concurrent purge never deletes an archive whose ticket is being written.
-    LEFTOVER_GRACE_SECONDS = 60 * 60
 
     def __init__(self, directory: Path, ttl_seconds: int, max_total_bytes: int) -> None:
         self.directory = directory
@@ -109,7 +107,7 @@ class DownloadStore:
             else:
                 live.append(ticket)
         tokens = {ticket.token for ticket in live}
-        cutoff = now - self.LEFTOVER_GRACE_SECONDS
+        cutoff = now - AppConfig.DOWNLOAD_LEFTOVER_GRACE_SECONDS
         leftovers = [path for path in self.directory.glob("*.zip") if path.stem not in tokens]
         for path in [*leftovers, *self.directory.glob("*.part")]:
             try:

@@ -10,6 +10,8 @@ from typing import Any
 from PIL import ExifTags, TiffImagePlugin
 from PIL import Image as PillowImage
 
+from app.core.config import AppConfig
+
 Row = dict[str, Any]
 
 IPTC_SOURCE_TYPE_PREFIX = "http://cv.iptc.org/newscodes/digitalsourcetype/"
@@ -23,7 +25,6 @@ AI_GENERATOR_PATTERN = re.compile(
 )
 # PNG text keys written by local diffusion front ends (A1111/Forge, ComfyUI, InvokeAI).
 AI_TEXT_KEYS = frozenset({"parameters", "prompt", "workflow", "invokeai_metadata", "sd-metadata", "dream"})
-MAX_TEXT_CHARS = 1000
 
 
 class CBORDecoder:
@@ -295,7 +296,7 @@ class ImageInspector:
         text = str(value).strip().strip("\0")
         if not all(char.isprintable() or char in "\n\r\t" for char in text):
             return None
-        return text[:MAX_TEXT_CHARS] + "…" if len(text) > MAX_TEXT_CHARS else text
+        return text[:AppConfig.INSPECTION_MAX_TEXT_CHARS] + "…" if len(text) > AppConfig.INSPECTION_MAX_TEXT_CHARS else text
 
     @staticmethod
     def _gps_degrees(values: Any, reference: Any) -> float | None:

@@ -6,13 +6,13 @@ from io import BytesIO
 import httpx
 from PIL import Image, ImageOps
 
+from app.core.config import AppConfig
 from app.core.models import ImageAnalysis, MetadataRules
 
 
 class OllamaVisionAnalyzer:
     """Generate searchable image metadata with a local Ollama vision model."""
 
-    MAX_INPUT_EDGE = 1024
     PROMPT = (
         "Analyze only the supplied image. Return a concise factual caption "
         "and 5-12 lowercase searchable tags covering subjects, objects, "
@@ -29,7 +29,7 @@ class OllamaVisionAnalyzer:
         """Bound vision input cost without changing the stored original."""
         with Image.open(BytesIO(image_data)) as source:
             frame = ImageOps.exif_transpose(source).convert("RGB")
-            frame.thumbnail((cls.MAX_INPUT_EDGE, cls.MAX_INPUT_EDGE))
+            frame.thumbnail((AppConfig.VISION_MAX_INPUT_EDGE, AppConfig.VISION_MAX_INPUT_EDGE))
             output = BytesIO()
             frame.save(output, format="JPEG", quality=88, optimize=True)
         return output.getvalue()
@@ -42,7 +42,7 @@ class OllamaVisionAnalyzer:
             "format": ImageAnalysis.model_json_schema(),
             # Thinking models (Qwen3-VL) otherwise reason at length before every reply.
             "think": False,
-            "options": {"temperature": 0, "num_ctx": 8192},
+            "options": {"temperature": 0, "num_ctx": AppConfig.VISION_CONTEXT_TOKENS},
             "messages": [
                 {
                     "role": "user",
@@ -53,7 +53,7 @@ class OllamaVisionAnalyzer:
                 }
             ],
         }
-        with httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+        with httpx.Client(timeout=httpx.Timeout(AppConfig.VISION_TIMEOUT_SECONDS, connect=AppConfig.VISION_CONNECT_TIMEOUT_SECONDS)) as client:
             response = client.post(f"{self.base_url}/api/chat", json=payload)
             response.raise_for_status()
         analysis = ImageAnalysis.model_validate_json(response.json()["message"]["content"])

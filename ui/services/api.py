@@ -19,7 +19,7 @@ class LunaVisiaAPI:
         method: str,
         path: str,
         *,
-        timeout: float = 30.0,
+        timeout: float = UIConfig.API_TIMEOUT_SECONDS,
         **kwargs: Any,
     ) -> httpx.Response:
         response = httpx.request(
@@ -55,14 +55,14 @@ class LunaVisiaAPI:
     # Visible images
 
     def metadata(self) -> list[dict[str, Any]]:
-        return self.request("GET", "/api/metadata", timeout=10.0).json()["images"]
+        return self.request("GET", "/api/metadata", timeout=UIConfig.LIST_TIMEOUT_SECONDS).json()["images"]
 
     def upload_image(self, name: str, content_base64: str) -> dict[str, Any]:
         return self.request(
             "POST",
             "/api/images",
             json={"name": name, "content_base64": content_base64},
-            timeout=360.0,
+            timeout=UIConfig.UPLOAD_TIMEOUT_SECONDS,
         ).json()
 
     def delete_image(self, name: str) -> None:
@@ -79,7 +79,7 @@ class LunaVisiaAPI:
         ).json()
 
     def favorites(self) -> list[dict[str, Any]]:
-        return self.request("GET", "/api/favorites", timeout=10.0).json()["images"]
+        return self.request("GET", "/api/favorites", timeout=UIConfig.LIST_TIMEOUT_SECONDS).json()["images"]
 
     def set_favorites(self, names: list[str], favorite: bool) -> None:
         self.request("POST", "/api/favorites", json={"names": names, "favorite": favorite})
@@ -87,7 +87,7 @@ class LunaVisiaAPI:
     # Hidden images
 
     def hidden_images(self) -> list[dict[str, Any]]:
-        return self.request("GET", "/api/hidden/images", timeout=10.0).json()["images"]
+        return self.request("GET", "/api/hidden/images", timeout=UIConfig.LIST_TIMEOUT_SECONDS).json()["images"]
 
     def hide_images(self, names: list[str]) -> None:
         self.request("POST", "/api/hidden/hide", json={"names": names})

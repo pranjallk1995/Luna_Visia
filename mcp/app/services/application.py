@@ -257,8 +257,6 @@ class VisibleImageService(ImageCollectionService):
 
     HIDDEN = False
     WRONG_COLLECTION_MESSAGE = "Hidden images require authentication."
-    FULL_DETAIL_MAX_IMAGES = 20
-    BATCH_MAX_IMAGES = 100
     RENAME_STEM_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 
     def __init__(
@@ -362,12 +360,12 @@ class VisibleImageService(ImageCollectionService):
     ) -> dict[str, Any]:
         """Return stored and embedded metadata for a page or an explicit batch.
 
-        Full detail is capped at ``FULL_DETAIL_MAX_IMAGES`` because complete
+        Full detail is capped at ``AppConfig.FULL_DETAIL_MAX_IMAGES`` because complete
         EXIF and C2PA output is large; summaries allow up to ``max_limit``.
         """
         if detail not in ("summary", "full"):
             raise ValueError('detail must be "summary" or "full".')
-        max_limit = min(max_limit, self.FULL_DETAIL_MAX_IMAGES) if detail == "full" else max_limit
+        max_limit = min(max_limit, AppConfig.FULL_DETAIL_MAX_IMAGES) if detail == "full" else max_limit
         if names is None:
             rows = self.list()
             limit, offset = min(max(limit, 1), max_limit), max(offset, 0)
@@ -396,8 +394,8 @@ class VisibleImageService(ImageCollectionService):
         """Apply each change on its own, reporting failures instead of stopping."""
         if not items:
             raise ValueError("Provide at least one image change.")
-        if len(items) > self.BATCH_MAX_IMAGES:
-            raise ValueError(f"Change at most {self.BATCH_MAX_IMAGES} images at a time.")
+        if len(items) > AppConfig.BATCH_MAX_IMAGES:
+            raise ValueError(f"Change at most {AppConfig.BATCH_MAX_IMAGES} images at a time.")
         succeeded, failed = [], []
         for name, apply in items:
             try:

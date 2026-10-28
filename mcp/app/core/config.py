@@ -3,12 +3,31 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
 class AppConfig:
     """Immutable backend settings loaded from environment variables."""
+
+    ASSET_DIR: ClassVar[Path] = Path(__file__).resolve().parent.parent / "assets"
+    VISION_MAX_INPUT_EDGE: ClassVar[int] = 1024
+    # Luna Lexia asks Sentia for the same model with this context. Ollama reloads a
+    # model whose requested context changes, so matching it lets both apps share one
+    # loaded copy instead of swapping it (about 6 s) whenever they alternate.
+    VISION_CONTEXT_TOKENS: ClassVar[int] = 16_384
+    VISION_TIMEOUT_SECONDS: ClassVar[float] = 300.0
+    VISION_CONNECT_TIMEOUT_SECONDS: ClassVar[float] = 10.0
+    REMOTE_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 30.0
+    # Longest embedded text (prompts, generator notes) kept from an image's metadata.
+    INSPECTION_MAX_TEXT_CHARS: ClassVar[int] = 1000
+    # Leftover archives without a ticket are only removed once clearly abandoned, so a
+    # concurrent purge never deletes an archive whose ticket is being written.
+    DOWNLOAD_LEFTOVER_GRACE_SECONDS: ClassVar[int] = 60 * 60
+    FULL_DETAIL_MAX_IMAGES: ClassVar[int] = 20
+    BATCH_MAX_IMAGES: ClassVar[int] = 100
+    CREDENTIAL_SALT_BYTES: ClassVar[int] = 16
 
     image_dir: Path
     database_url: str

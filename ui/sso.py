@@ -5,14 +5,14 @@ of every app. This module reads that cookie, asks Sentia over the private
 network whose session it is, and applies this app's own email allowlist.
 Signing out here signs out of every Luna app.
 
-The same file is copied into each app's ``ui/`` folder; keep the copies identical.
+The same file is copied into each app's ``ui/`` folder; keep the copies identical,
+along with the ``SSOConfig`` settings block in each app's ``config.py``.
 """
 
 from __future__ import annotations
 
 import base64
 import html
-import os
 import time
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -20,11 +20,8 @@ from urllib.parse import quote, urlsplit, urlunsplit
 import httpx
 import streamlit as st
 
-COOKIE_NAME = "luna_sso"
-SESSION_HEADER = "X-Luna-Session"
-# How long a confirmed session is trusted before asking Sentia again, so a sign-out
-# in another app takes effect here within this many seconds.
-RECHECK_SECONDS = 60
+from config import SSOConfig
+
 SIGN_OUT_KEY = "luna_sso_sign_out"
 CACHE_KEY = "luna_sso_user"
 
@@ -39,17 +36,10 @@ GOOGLE_LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 class LunaSingleSignOn:
     """Gate a Luna app behind Sentia's shared sign-in and this app's allowlist."""
 
-    def __init__(
-        self,
-        allowed_emails: frozenset[str],
-        public_url: str | None = None,
-        internal_url: str | None = None,
-    ) -> None:
+    def __init__(self, allowed_emails: frozenset[str], config: SSOConfig) -> None:
         self.allowed_emails = allowed_emails
-        self.public_url = (public_url or os.getenv("LUNA_SSO_URL", "")).rstrip("/")
-        self.internal_url = (internal_url or os.getenv("LUNA_SSO_INTERNAL_URL", "http://luna-sentia-auth:8000")).rstrip("/")
-        if not self.public_url:
-            raise RuntimeError("LUNA_SSO_URL must be the public address of Luna Sentia's auth service.")
+        self.public_url = config.public_url.rstrip("/")
+        self.internal_url = config.internal_url.rstrip("/")
 
     # Identity
 
@@ -59,18 +49,22 @@ class LunaSingleSignOn:
 
     def lookup(self, token: str) -> dict[str, Any] | None:
         """Ask Sentia who the session belongs to; None when it is unknown or expired."""
-        response = httpx.get(f"{self.internal_url}/session", headers={SESSION_HEADER: token}, timeout=5)
+        response = httpx.get(
+            f"{self.internal_url}/session",
+            headers={SSOConfig.SESSION_HEADER: token},
+            timeout=SSOConfig.LOOKUP_TIMEOUT_SECONDS,
+        )
         if response.status_code == 401:
             return None
         response.raise_for_status()
         return response.json()
 
     def user(self) -> dict[str, Any] | None:
-        token = st.context.cookies.get(COOKIE_NAME)
+        token = st.context.cookies.get(SSOConfig.COOKIE_NAME)
         if not token:
             return None
         cached = st.session_state.get(CACHE_KEY)
-        if cached and cached["token"] == token and time.monotonic() - cached["checked"] < RECHECK_SECONDS:
+        if cached and cached["token"] == token and time.monotonic() - cached["checked"] < SSOConfig.RECHECK_SECONDS:
             return cached["user"]
         try:
             user = self.lookup(token)

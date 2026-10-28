@@ -155,7 +155,7 @@ class LunaVisiaApp:
         SessionState.initialize()
         self.show_reload_notice()
         LunaStyle.apply(st.session_state.color_theme)
-        LunaSingleSignOn(self.config.allowed_emails).require_login(
+        LunaSingleSignOn(self.config.allowed_emails, self.config.sso).require_login(
             "Luna Visia", "Private AI-managed image storage"
         )
         open_upload = self.render_header()

@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 
 from app.services.media import ImagePayloadDecoder
+from app.core.config import AppConfig
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,7 @@ class ImageSourceResolver:
         ``application/octet-stream``, so the bytes are validated afterwards.
         """
         current = url
-        with httpx.Client(timeout=30.0, follow_redirects=False) as client:
+        with httpx.Client(timeout=AppConfig.REMOTE_FETCH_TIMEOUT_SECONDS, follow_redirects=False) as client:
             for redirect_count in range(self.max_redirects + 1):
                 self.validate_public_https_url(current)
                 with client.stream("GET", current) as response:

@@ -8,6 +8,29 @@ from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
+class SSOConfig:
+    """Single sign-on through Luna Sentia; this block is identical in every Luna app's config.py."""
+
+    COOKIE_NAME: ClassVar[str] = "luna_sso"
+    SESSION_HEADER: ClassVar[str] = "X-Luna-Session"
+    # How long a confirmed session is trusted before asking Sentia again, so a sign-out
+    # in another app takes effect here within this many seconds.
+    RECHECK_SECONDS: ClassVar[int] = 60
+    LOOKUP_TIMEOUT_SECONDS: ClassVar[float] = 5.0
+
+    public_url: str
+    internal_url: str = "http://luna-sentia-auth:8000"
+
+    @classmethod
+    def from_env(cls) -> "SSOConfig":
+        public_url = os.getenv("LUNA_SSO_URL", "").strip().rstrip("/")
+        if not public_url:
+            raise RuntimeError("LUNA_SSO_URL must be the public address of Luna Sentia's auth service.")
+        internal_url = os.getenv("LUNA_SSO_INTERNAL_URL", "").strip().rstrip("/")
+        return cls(public_url=public_url, internal_url=internal_url or cls.internal_url)
+
+
+@dataclass(frozen=True)
 class UIConfig:
     """Immutable UI layout and backend-connection settings."""
 
@@ -15,11 +38,19 @@ class UIConfig:
     LOGO_PATH: ClassVar[Path] = UI_ROOT / "assets" / "lunavisia_logo.png"
     MAX_TAGS: ClassVar[int] = 32
     UPLOAD_TYPES: ClassVar[tuple[str, ...]] = ("png", "jpg", "jpeg", "gif", "webp")
+    API_TIMEOUT_SECONDS: ClassVar[float] = 30.0
+    LIST_TIMEOUT_SECONDS: ClassVar[float] = 10.0
+    # Uploads wait for the backend's vision model to caption and tag the image.
+    UPLOAD_TIMEOUT_SECONDS: ClassVar[float] = 360.0
+    THUMBNAIL_CACHE_ENTRIES: ClassVar[int] = 256
+    PREVIEW_CACHE_ENTRIES: ClassVar[int] = 64
+    FACTS_CACHE_ENTRIES: ClassVar[int] = 256
 
     image_dir: Path
     api_url: str
     api_token: str
     allowed_emails: frozenset[str]
+    sso: SSOConfig
     card_size: tuple[int, int] = (420, 248)
     gallery_corner_radius: int = 10
     gallery_selection_color: str = "#D4D4D4"
@@ -55,4 +86,5 @@ class UIConfig:
             api_url=api_url,
             api_token=api_token,
             allowed_emails=allowed_emails,
+            sso=SSOConfig.from_env(),
         )

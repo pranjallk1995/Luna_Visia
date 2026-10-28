@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mcp.types import Icon
 
-ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
+from app.core.config import AppConfig
 
 
 class ServerBranding:
@@ -22,7 +22,7 @@ class ServerBranding:
     ICON_SIZES = (48, 96, 192, 512)
     SERVER_INFO_ICON_SIZES = (48, 96)
 
-    def __init__(self, public_url: str = "", asset_dir: Path = ASSET_DIR, name: str = "Luna Visia") -> None:
+    def __init__(self, public_url: str = "", asset_dir: Path = AppConfig.ASSET_DIR, name: str = "Luna Visia") -> None:
         self.public_url = public_url.rstrip("/")
         self.asset_dir = asset_dir
         self.name = name
