@@ -112,6 +112,16 @@ class IngestTests(VisiaServiceTestCase):
         self.assertEqual(result["analyzed"], ["dog.png"])
         self.assertEqual(result["skipped_count"], 1)
 
+    def test_backfill_reanalyzes_other_model_records_and_keeps_ai_modified(self):
+        self.visible.ingest("cat.png", png_payload())
+        self.repository.rows["cat.png"]["analysis_model"] = "older-vision"
+        self.repository.rows["cat.png"]["tags"] = ["cat", "ai modified"]
+        result = self.service.indexer.backfill()
+        self.assertEqual(result["analyzed"], ["cat.png"])
+        row = self.repository.rows["cat.png"]
+        self.assertEqual(row["analysis_model"], "test-vision")
+        self.assertIn("ai modified", row["tags"])
+
 
 class AIProvenanceTests(VisiaServiceTestCase):
     def test_inspector_reads_c2pa_generator_and_source_type(self):

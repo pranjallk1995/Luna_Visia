@@ -17,7 +17,7 @@ searchable tags, and stores that metadata in PostgreSQL. FastMCP makes the index
 collection available to AI assistants of your choice (ChatGPT here) for fast search and safe image-management
 operations without repeatedly opening every original image.
 
-> **Requires Luna Sentia, running and healthy:** Luna Visia keeps its data in Luna Sentia's PostgreSQL (`luna-sentia-db`) and joins Sentia's `luna_sentia_network`; it has no database of its own. Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until its `postgres` and `ollama` services report healthy, as described under [Start](#start). Sentia also serves the model: Visia uses `qwen2.5vl:7b` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
+> **Requires Luna Sentia, running and healthy:** Luna Visia keeps its data in Luna Sentia's PostgreSQL (`luna-sentia-db`) and joins Sentia's `luna_sentia_network`; it has no database of its own. Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until its `postgres` and `ollama` services report healthy, as described under [Start](#start). Sentia also serves the model: Visia uses `qwen3-vl:8b-instruct` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
 
 <p align="center">
   <img src="docs/assets/luna-visia-ai-assistant.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -98,7 +98,7 @@ through natural-language requests.
 | UI | Streamlit | Upload, search, galleries, Favorites, downloads, and authenticated hidden-image workflows |
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
-| Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen2.5vl:7b` by default |
+| Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen3-vl:8b-instruct` by default |
 | Database | PostgreSQL 17 in Luna Sentia (`luna-sentia-db`) | Metadata, full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
 | Storage | Docker volumes | Original images; the database and Ollama models live in Luna Sentia's volumes |
 | Database UI | Adminer in Luna Sentia | Local inspection of every Luna app's database on `luna-sentia-db` |
@@ -141,7 +141,7 @@ Create a private `.env`:
 ```dotenv
 # Must equal LUNAVISIA_DB_PASSWORD in Luna_Sentia/.env
 POSTGRES_PASSWORD=replace-with-a-private-database-password
-VISION_MODEL=qwen2.5vl:7b
+VISION_MODEL=qwen3-vl:8b-instruct
 LUNAVISIA_PUBLIC_BASE_URL=
 LUNAVISIA_API_TOKEN=replace-with-a-random-value-of-at-least-32-characters
 LUNAVISIA_ALLOWED_EMAILS=you@example.com
@@ -216,14 +216,20 @@ If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service
 
 ## Vision model
 
-The default model is `qwen2.5vl:7b`. To use a different Ollama vision model,
+The default model is `qwen3-vl:8b-instruct`, the model Lexia and Fiora also use, so
+Ollama keeps one model loaded for all of them. Use the `-instruct` tag: plain
+`qwen3-vl:8b` is the thinking variant, which reasons at length before every reply
+and ignores the JSON format Visia asks for. Each image records the model that
+analyzed it (`analysis_model`, shown as "Analyzed by" in the preview); after
+changing the model, `backfill_metadata` re-analyzes every image made by another one.
+To use a different Ollama vision model,
 add it to `SENTIA_MODELS` in Luna Sentia's `.env`, restart Sentia so it pulls
 the model, then set `VISION_MODEL` in Visia's `.env`. For example, use Llama 3.2
 Vision 11B:
 
 ```dotenv
 # Luna_Sentia/.env
-SENTIA_MODELS=qwen2.5vl:7b llama3.2-vision:11b
+SENTIA_MODELS=qwen3-vl:8b-instruct qwen3-embedding:0.6b llama3.2-vision:11b
 
 # Luna_Visia/.env
 VISION_MODEL=llama3.2-vision:11b

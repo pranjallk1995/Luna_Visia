@@ -111,6 +111,8 @@ class ImagePreviewDialog:
             self._render_name(keys, image_path)
         self._render_caption(keys, str(metadata.get("caption") or ""))
         self._render_tags(keys, list(metadata.get("tags") or []))
+        if metadata.get("analysis_model"):
+            self._render_model(keys, str(metadata["analysis_model"]))
 
     # Name
 
@@ -218,6 +220,22 @@ class ImagePreviewDialog:
             st.session_state[keys.caption_editing] = True
             st.session_state[keys.caption_draft] = caption
             st.rerun(scope="fragment")
+
+    # Model
+
+    def _render_model(self, keys: PreviewKeys, model: str) -> None:
+        """Show which vision model wrote the caption and tags."""
+        box = st.container()
+        self._marker(box, "lv-preview-details")
+        icon_column, model_column = box.columns([0.6, 19.4], vertical_alignment="center")
+        self._marker(icon_column, "lv-preview-static-icon")
+        icon_column.button(
+            ":material/smart_toy:", disabled=True, key=f"model_icon_{keys.name}", width="stretch"
+        )
+        model_column.markdown(
+            f'<div class="lv-preview-caption">Analyzed by {html.escape(model)}</div>',
+            unsafe_allow_html=True,
+        )
 
     # Tags
 

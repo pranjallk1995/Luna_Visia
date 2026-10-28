@@ -298,7 +298,7 @@ class MCPToolTests(ServerTestCase):
         self.assertEqual((first["count"], first["offset"], first["next_offset"]), (5, 0, 2))
         self.assertEqual(
             set(first["images"][0]),
-            {"name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url"},
+            {"name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url", "analysis_model"},
         )
         last = self.call("list_images", {"limit": 2, "offset": 4})
         self.assertEqual((len(last["images"]), last["next_offset"]), (1, None))

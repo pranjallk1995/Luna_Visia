@@ -24,7 +24,9 @@ from app.integrations.vision import OllamaVisionAnalyzer
 
 
 # The compact view of an image returned to LLM clients when listing or searching.
-SUMMARY_FIELDS = ("name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url")
+SUMMARY_FIELDS = (
+    "name", "caption", "tags", "favorite", "size_bytes", "updated_at", "public_url", "analysis_model"
+)
 
 
 # A preview's text key only needs enough to identify, describe, and link each tile.
@@ -140,7 +142,9 @@ class ImageIndexer:
         return self.images.upsert(record, self.urls.base_url())
 
     def backfill(self) -> dict[str, Any]:
-        """Analyze unindexed or changed files while skipping current records.
+        """Analyze unindexed, changed, or other-model files while skipping current records.
+
+        A re-analyzed image keeps its ``ai modified`` tag.
 
         Current records are not re-analyzed, but AI-generated ones missing the
         ``ai info`` tag get it added.
@@ -166,7 +170,8 @@ class ImageIndexer:
                     )
                     ai_tagged.append(path.name)
                 continue
-            self.store(path.name, data, self.analyze(data))
+            modified = bool(existing) and self.AI_MODIFIED_TAG in existing["tags"]
+            self.store(path.name, data, self.analyze(data, modified))
             analyzed.append(path.name)
         return {
             "analyzed_count": len(analyzed),

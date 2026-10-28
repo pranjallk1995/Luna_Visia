@@ -16,7 +16,7 @@ class OllamaVisionAnalyzer:
     PROMPT = (
         "Analyze only the supplied image. Return a concise factual caption "
         "and 5-12 lowercase searchable tags covering subjects, objects, "
-        "setting, colors, and style. Do not infer from a filename."
+        "setting, colors, and style, in English. Do not infer from a filename."
     )
 
     def __init__(self, base_url: str, model: str, rules: MetadataRules) -> None:
@@ -40,6 +40,8 @@ class OllamaVisionAnalyzer:
             "model": self.model,
             "stream": False,
             "format": ImageAnalysis.model_json_schema(),
+            # Thinking models (Qwen3-VL) otherwise reason at length before every reply.
+            "think": False,
             "options": {"temperature": 0, "num_ctx": 8192},
             "messages": [
                 {
