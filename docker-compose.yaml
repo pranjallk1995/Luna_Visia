@@ -54,7 +54,6 @@ services:
       LUNA_SSO_URL: ${LUNA_SSO_URL:?Set LUNA_SSO_URL to Luna Sentia's public sign-on address}
       LUNA_SSO_INTERNAL_URL: ${LUNA_SSO_INTERNAL_URL:-http://luna-sentia-auth:8000}
       IMAGE_DIR: /data/images
-      MCP_URL: http://luna-visia-mcp:8000/mcp
       LUNAVISIA_API_URL: http://luna-visia-mcp:8000
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
       LUNAVISIA_ALLOWED_EMAILS: ${LUNAVISIA_ALLOWED_EMAILS:?Set LUNAVISIA_ALLOWED_EMAILS to the Google accounts allowed to access Visia}
