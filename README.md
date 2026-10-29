@@ -104,7 +104,8 @@ Visia image URLs that other apps use: food images for Vita, room images for
 Lumia, and cover art for Vibia. Grey dashed lines are planned: links into Fiora
 (tax details from Lexia, transaction image and icon URLs from Visia). Luna Unia
 is the one home for all of them, on port 42069: it checks which Luna stacks are
-running and opens each one with the shared sign-in.
+running and opens each one with the shared sign-in. The purple line is the mood of
+the track Vibia plays, which Lumia's music schemes follow.
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
