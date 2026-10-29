@@ -100,9 +100,11 @@ through natural-language requests.
 Every Luna app is a Streamlit UI plus a FastMCP service on Luna Sentia's
 `luna_sentia_network`: its data lives in Sentia's PostgreSQL, people sign in
 through Sentia's `auth`, and model calls go to Sentia's Ollama. Orange lines are
-Visia image URLs that other apps use: food images for Vita and room images for
-Lumia. Grey dashed lines are planned links into Fiora: tax details from Lexia,
-and transaction image and icon URLs from Visia.
+Visia image URLs that other apps use: food images for Vita, room images for
+Lumia, and cover art for Vibia. Grey dashed lines are planned: links into Fiora
+(tax details from Lexia, transaction image and icon URLs from Visia). Luna Unia
+is the one home for all of them, on port 42069: it checks which Luna stacks are
+running and opens each one with the shared sign-in.
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
