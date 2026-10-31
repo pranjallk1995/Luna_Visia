@@ -302,6 +302,7 @@ Luna Visia exposes these tools to connected MCP clients:
 - `rename_image` - safely rename a visible image file and its metadata without re-running vision analysis; its immutable image ID and public URL remain unchanged.
 - `rename_images` - rename up to 100 visible images in one call, applied in order so chained renames work. Each rename follows the `rename_image` rules and succeeds or fails on its own; results list `renamed` and `failed` (with each image's error).
 - `remove_image` - delete a visible image and its metadata.
+- `remove_images` - delete up to 100 visible images at once; per-image errors are reported under `failed` instead of stopping the batch.
 
 ### Metadata, search, and collections
 
@@ -311,7 +312,7 @@ Luna Visia exposes these tools to connected MCP clients:
 - `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis. Tags must be lowercase: a tag with capital letters is rejected and nothing is changed.
 - `update_images_metadata` - apply caption and tag changes to up to 100 visible images in one call, for example LLM classification results from `list_image_metadata`. Each entry (`name`, optional `caption`, `add_tags`, `remove_tags`) is applied independently and reported under `updated` or `failed`; a capitalized tag anywhere rejects the whole batch with nothing changed.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
-- `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. Tag filters must be lowercase too.
+- `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. `exclude_tags` leaves out images carrying those tags and can be the only filter (`exclude_tags=["ai info"]` finds every image not marked as AI-generated). Tag filters must be lowercase too.
 - `backfill_metadata` - generate missing or stale metadata for imported files, and add the `ai info` tag to already-indexed AI-generated images.
 
 Images whose embedded metadata says generative AI made them get the `ai info` tag automatically on upload or replacement. The signals are a C2PA or XMP IPTC digital source type of `trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia` (as in ChatGPT/gpt-image output), a known generator in EXIF `Software` or XMP `CreatorTool`, or diffusion parameters in PNG text chunks. Search for them with `search_images(tags=["ai info"])`. The tag is enforced on every edit path (MCP tools, batch updates, and the web UI, for visible and hidden images): removing `ai info` from an image whose metadata marks it as AI-generated is rejected, and editing such an image that lacks the tag adds it back. On other images the tag can be added or removed freely.

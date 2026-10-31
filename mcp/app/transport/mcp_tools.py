@@ -171,16 +171,21 @@ class VisiaMCPTools:
             limit: int = 50,
             offset: int = 0,
             include_preview: bool = False,
+            exclude_tags: list[str] | None = None,
         ):
             """Search visible filenames, captions, and tags without opening files.
 
+            exclude_tags leaves out images carrying any of those tags; it can be
+            the only filter, e.g. exclude_tags=["ai info"] finds every image not
+            marked as AI-generated.
             Tags must be lowercase; a tag containing capital letters is rejected.
             Results include each image's public_url; follow next_offset for more.
             Set include_preview=true to also get a numbered contact sheet of the
             first 20 results.
             """
             MetadataRules.require_lowercase_tags(tags, "tags")
-            results = search.search(query, tags, match_all_tags, limit, offset)
+            MetadataRules.require_lowercase_tags(exclude_tags, "exclude_tags")
+            results = search.search(query, tags, match_all_tags, limit, offset, exclude_tags)
             return await self.with_preview(results, "results", include_preview)
 
         @server.tool()
@@ -433,3 +438,17 @@ class VisiaMCPTools:
         def remove_image(name: str) -> dict[str, str]:
             """Remove a non-hidden image and its persisted metadata consistently."""
             return visible.remove(name)
+
+        @server.tool()
+        async def remove_images(names: list[str]) -> dict[str, Any]:
+            """Permanently remove up to 100 visible images and their metadata at once.
+
+            Use exact filenames from list_images, search_images, or
+            list_image_metadata; for example, to remove every image without the
+            "ai info" tag, page search_images(exclude_tags=["ai info"], limit=100)
+            and pass the names here. Deletion cannot be undone, so confirm the
+            selection with the user first. Each removal is independent: successes
+            are listed under "removed" and per-image errors (such as a missing or
+            hidden name) under "failed".
+            """
+            return {"status": "deleted", **await offload(visible.remove_many, names)}

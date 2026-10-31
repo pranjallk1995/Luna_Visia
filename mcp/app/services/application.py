@@ -434,6 +434,14 @@ class VisibleImageService(ImageCollectionService):
             "renamed",
         )
 
+    def remove_many(self, names: list[str]) -> dict[str, Any]:
+        """Delete many visible images, reporting each failure instead of stopping."""
+        clean_names = unique_names(names, "Provide at least one image name.")
+        return self._apply_batch(
+            [(name, lambda name=name: self.remove(name)["removed_name"]) for name in clean_names],
+            "removed",
+        )
+
     def favorites(self) -> list[Row]:
         return self.images.list_favorites()
 
@@ -745,14 +753,16 @@ class SearchService:
         match_all_tags: bool,
         limit: int,
         offset: int,
+        exclude_tags: list[str] | None = None,
     ) -> dict[str, Any]:
         normalized_query = self.rules.search_query(query)
         normalized_tags = self.rules.normalize_tags(tags) if tags else []
-        if not normalized_query and not normalized_tags:
-            raise ValueError("Provide a meaningful query or at least one tag.")
+        normalized_excluded = self.rules.normalize_tags(exclude_tags) if exclude_tags else []
+        if not normalized_query and not normalized_tags and not normalized_excluded:
+            raise ValueError("Provide a meaningful query, at least one tag, or tags to exclude.")
         limit, offset = min(max(limit, 1), self.limit_max), max(offset, 0)
         count, results = self.images.search(
-            normalized_query, normalized_tags, match_all_tags, limit, offset
+            normalized_query, normalized_tags, match_all_tags, limit, offset, normalized_excluded
         )
         next_offset = offset + len(results)
         return {

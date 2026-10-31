@@ -210,8 +210,12 @@ class ImageRepository(Repository):
         match_all_tags: bool,
         limit: int,
         offset: int,
+        exclude_tags: list[str] | None = None,
     ) -> tuple[int, list[Row]]:
-        """Query persisted full-text and tag indexes without opening images."""
+        """Query persisted full-text and tag indexes without opening images.
+
+        Images carrying any of ``exclude_tags`` are left out.
+        """
         clauses = ["hidden = false"]
         filters: list[Any] = []
         if normalized_query:
@@ -220,6 +224,9 @@ class ImageRepository(Repository):
         if tags:
             clauses.append(f"tags {'@>' if match_all_tags else '&&'} %s")
             filters.append(tags)
+        if exclude_tags:
+            clauses.append("NOT (tags && %s)")
+            filters.append(exclude_tags)
         rank_sql = (
             "ts_rank_cd(search_vector, websearch_to_tsquery('english', %s))"
             if normalized_query

@@ -104,7 +104,7 @@ class FakeImageRepository:
                 changed.append(name)
         return changed
 
-    def search(self, query, tags, match_all, limit, offset):
+    def search(self, query, tags, match_all, limit, offset, exclude_tags=None):
         stem = query.rstrip("s")
         matches = [
             {
@@ -114,6 +114,7 @@ class FakeImageRepository:
             for row in self.rows.values()
             if not row["hidden"]
             and (stem in row["caption"].lower() or any(stem in tag for tag in row["tags"]))
+            and not set(exclude_tags or ()) & set(row["tags"])
         ]
         return len(matches), matches[offset : offset + limit]
 

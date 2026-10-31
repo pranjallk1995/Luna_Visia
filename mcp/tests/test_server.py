@@ -234,6 +234,25 @@ class MCPToolTests(ServerTestCase):
         with self.assertRaises(ToolError):
             self.call("update_images_metadata", {"updates": []})
 
+    def test_remove_images_reports_each_failure(self) -> None:
+        self.service.hidden.set_hidden(["two.png"], True)
+        result = self.call("remove_images", {"names": ["one.png", "two.png", "missing.png", "one.png"]})
+        self.assertEqual((result["removed"], result["removed_count"]), (["one.png"], 1))
+        self.assertEqual([item["name"] for item in result["failed"]], ["two.png", "missing.png"])
+        self.assertFalse((self.root / "one.png").exists())
+        self.assertIsNotNone(self.repository.get("two.png", hidden=True))
+        with self.assertRaises(ToolError):
+            self.call("remove_images", {"names": [f"{i}.png" for i in range(101)]})
+
+    def test_search_can_exclude_tags_alone(self) -> None:
+        self.call("update_image_metadata", {"name": "one.png", "add_tags": ["ai info"]})
+        results = self.call("search_images", {"exclude_tags": ["ai info"]})
+        names = [item["name"] for item in results["results"]]
+        self.assertNotIn("one.png", names)
+        self.assertTrue(names)
+        with self.assertRaisesRegex(ToolError, "exclude_tags must be lowercase"):
+            self.call("search_images", {"exclude_tags": ["AI info"]})
+
     def test_rename_image_preserves_public_url(self) -> None:
         renamed = self.call("rename_image", {"name": "one.png", "new_name": "renamed.png"})
         self.assertEqual(renamed["name"], "renamed.png")
