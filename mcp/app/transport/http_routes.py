@@ -11,6 +11,7 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from app.transport.branding import ServerBranding
 from app.transport.auth import APIAuthenticator
 from app.core.models import MetadataChange
+from app.integrations.remote import ImageSourceResolver
 from app.services.application import VisiaService
 from app.services.uploads import UploadLinkNotFound
 
@@ -33,11 +34,15 @@ class VisiaHTTPRoutes:
         service: VisiaService,
         branding: ServerBranding,
         api_token: str,
+        sources: ImageSourceResolver | None = None,
+        companion_token: str = "",
     ) -> None:
         self.server = server
         self.service = service
         self.branding = branding
         self.authenticator = APIAuthenticator(api_token)
+        self.sources = sources
+        self.companion = APIAuthenticator(companion_token) if companion_token else None
         self._register()
 
     @staticmethod
@@ -99,6 +104,7 @@ class VisiaHTTPRoutes:
         self._register_favorites()
         self._register_downloads()
         self._register_uploads()
+        self._register_companion_images()
         self._register_hidden_images()
 
     async def health(self, request: Request) -> dict:
@@ -220,6 +226,47 @@ class VisiaHTTPRoutes:
                 return JSONResponse({"error": str(error)}, status_code=404)
 
         self.route("POST", "/api/uploads/{token}", receive, 201)
+
+    COMPANION_FIELDS = ("status", "message", "name", "image_id", "public_url", "caption", "tags")
+
+    def _register_companion_images(self) -> None:
+        """Let Luna Vita and Luna Vibia store an image and get its stable public URL.
+
+        The body names one source as upload_image takes it (image_url, content_base64,
+        or a chat file reference) plus an optional name and tags. Identical bytes
+        return the stored image as "duplicate", so a retried request is harmless.
+        """
+        visible = self.service.visible
+
+        def store(payload: dict[str, Any]) -> dict[str, Any]:
+            if self.sources is None:
+                raise RuntimeError("Image sources are not configured.")
+            tags = payload.get("tags") or []
+            if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+                raise ValueError("tags must be a list of strings.")
+            source = self.sources.resolve(
+                payload.get("content_base64"), payload.get("image_url"), payload.get("file")
+            )
+            name = payload.get("name")
+            if not isinstance(name, str) or not name.strip():
+                name = source.suggested_name
+            stored = visible.upload(name, source.data)
+            if tags:
+                stored = {**stored, **visible.update_metadata(stored["name"], MetadataChange(add_tags=tags))}
+            return {key: stored[key] for key in self.COMPANION_FIELDS if key in stored}
+
+        async def companion_image(request: Request):
+            if self.companion is None:
+                return JSONResponse(
+                    {"error": "Companion uploads are off; set LUNAVISIA_COMPANION_TOKEN in Luna Visia."},
+                    status_code=503,
+                )
+            rejection = self.companion.rejection(request)
+            if rejection is not None:
+                return rejection
+            return await anyio.to_thread.run_sync(store, await self.payload(request))
+
+        self.route("POST", "/api/companion/images", companion_image, 201)
 
     def _register_favorites(self) -> None:
         visible = self.service.visible

@@ -42,12 +42,46 @@ class FakeImageRepository:
         return row
 
     def list(self, hidden=False):
-        return [
+        return self._gallery_order(
             row for row in self.rows.values() if hidden is None or row["hidden"] == hidden
-        ]
+        )
 
     def list_favorites(self):
-        return [row for row in self.rows.values() if row["favorite"] and not row["hidden"]]
+        return self._gallery_order(row for row in self.rows.values() if row["favorite"] and not row["hidden"])
+
+    @staticmethod
+    def _gallery_order(rows):
+        return sorted(rows, key=lambda row: row.get("showcase_rank") or 0)
+
+    def showcase_candidates(self):
+        return [
+            {"name": row["name"], "embedding": row.get("embedding"), "showcase_rank": row.get("showcase_rank")}
+            for row in reversed(self.rows.values())
+            if not row["hidden"]
+        ]
+
+    def save_embedding(self, name, embedding, model):
+        self.rows[name].update(embedding=embedding, embedding_model=model)
+
+    def save_showcase_order(self, names):
+        for row in self.rows.values():
+            row["showcase_rank"] = None
+        for rank, name in enumerate(names, start=1):
+            if not self.rows[name]["hidden"]:
+                self.rows[name]["showcase_rank"] = rank
+
+    def insert_showcase_rank(self, name, rank):
+        for row in self.rows.values():
+            if (row.get("showcase_rank") or 0) >= rank:
+                row["showcase_rank"] += 1
+        if not self.rows[name]["hidden"]:
+            self.rows[name]["showcase_rank"] = rank
+
+    def clear_showcase_order(self):
+        ranked = [row for row in self.rows.values() if row.get("showcase_rank") is not None]
+        for row in ranked:
+            row["showcase_rank"] = None
+        return len(ranked)
 
     def is_hidden(self, name):
         if name not in self.rows:
@@ -169,6 +203,21 @@ class FakeCredentialRepository:
             self.credentials.pin_hash,
             iterations,
         )
+
+
+class FakeEmbedder:
+    """Stand in for SigLIP: an image's embedding is its average color, so alike colors are alike."""
+
+    model_name = "fake-siglip"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed_image(self, data):
+        self.calls += 1
+        with Image.open(BytesIO(data)) as image:
+            red, green, blue = image.convert("RGB").resize((1, 1)).getpixel((0, 0))
+        return [red / 255 + 0.01, green / 255 + 0.01, blue / 255 + 0.01]
 
 
 class FakeAnalyzer:

@@ -15,7 +15,9 @@ from app.core.config import AppConfig
 from app.services.analysis_graph import ImageAnalysisGraph
 from app.services.downloads import DownloadStore, DownloadTicket
 from app.services.inspection import ImageInspector
+from app.integrations.embeddings import EmbeddingUnavailableError, SiglipEmbedder
 from app.services.media import ImagePayloadDecoder, PreviewRenderer
+from app.services.showcase import ShowcaseSorter
 from app.core.models import ImageAnalysis, ImageRecord, MetadataChange, MetadataRules
 from app.data.repositories import ImageRepository, PublicURLRepository, Row
 from app.data.storage import ImageStorage
@@ -102,8 +104,8 @@ class PublicURLService:
 class ImageIndexer:
     """Generate AI metadata for image bytes and persist it with content identity.
 
-    Analysis runs as the ``ImageAnalysisGraph``: the vision model and the
-    provenance check in parallel, then system tagging.
+    Analysis runs as the ``ImageAnalysisGraph``: the vision model, the
+    provenance check, and the GPU embedding in parallel, then system tagging.
     """
 
     AI_MODIFIED_TAG = ImageAnalysisGraph.AI_MODIFIED_TAG
@@ -117,6 +119,7 @@ class ImageIndexer:
         urls: PublicURLService,
         inspector: ImageInspector,
         rules: MetadataRules,
+        embedder: SiglipEmbedder | None = None,
     ) -> None:
         self.storage = storage
         self.images = images
@@ -124,7 +127,8 @@ class ImageIndexer:
         self.urls = urls
         self.inspector = inspector
         self.rules = rules
-        self.graph = ImageAnalysisGraph(analyzer, inspector, rules)
+        self.embedder = embedder
+        self.graph = ImageAnalysisGraph(analyzer, inspector, rules, embedder)
 
     def analyze(self, data: bytes, modified: bool = False) -> ImageAnalysis:
         """Analyze bytes, tagging replacements and AI-generated images."""
@@ -138,6 +142,8 @@ class ImageIndexer:
             caption=analysis.caption,
             tags=list(analysis.tags),
             analysis_model=self.analyzer.model,
+            embedding=analysis.embedding,
+            embedding_model=self.embedder.model_name if analysis.embedding and self.embedder else None,
         )
         return self.images.upsert(record, self.urls.base_url())
 
@@ -147,11 +153,13 @@ class ImageIndexer:
         A re-analyzed image keeps its ``ai modified`` tag.
 
         Current records are not re-analyzed, but AI-generated ones missing the
-        ``ai info`` tag get it added.
+        ``ai info`` tag get it added, and ones without an embedding from the
+        current model get one (on the GPU; left for later if it is unavailable).
         """
         indexed = {item["name"]: item for item in self.images.list(hidden=None)}
-        analyzed, ai_tagged = [], []
+        analyzed, ai_tagged, embedded = [], [], []
         skipped = 0
+        embedding_error = None
         for path in self.storage.image_files():
             data = path.read_bytes()
             existing = indexed.get(path.name)
@@ -169,6 +177,16 @@ class ImageIndexer:
                         hidden=existing["hidden"],
                     )
                     ai_tagged.append(path.name)
+                if self.embedder and embedding_error is None and (
+                    existing.get("embedding_model") != self.embedder.model_name
+                ):
+                    try:
+                        self.images.save_embedding(
+                            path.name, self.embedder.embed_image(data), self.embedder.model_name
+                        )
+                        embedded.append(path.name)
+                    except EmbeddingUnavailableError as error:
+                        embedding_error = str(error)
                 continue
             modified = bool(existing) and self.AI_MODIFIED_TAG in existing["tags"]
             self.store(path.name, data, self.analyze(data, modified))
@@ -179,6 +197,8 @@ class ImageIndexer:
             "analyzed": analyzed,
             "ai_tagged_count": len(ai_tagged),
             "ai_tagged": ai_tagged,
+            "embedded_count": len(embedded),
+            **({"embedding_error": embedding_error} if embedding_error else {}),
         }
 
 
@@ -202,9 +222,12 @@ class ImageCollectionService:
         images: ImageRepository,
         rules: MetadataRules,
         inspector: ImageInspector,
+        showcase: ShowcaseSorter | None = None,
     ) -> None:
         self.storage = storage
         self.images = images
+        # Slots newly visible images into a saved similarity order, if there is one.
+        self.showcase = showcase
         self.rules = rules
         self.inspector = inspector
 
@@ -269,8 +292,9 @@ class VisibleImageService(ImageCollectionService):
         inspector: ImageInspector,
         max_fetch_images: int,
         max_fetch_bytes: int,
+        showcase: ShowcaseSorter | None = None,
     ) -> None:
-        super().__init__(storage, images, rules, inspector)
+        super().__init__(storage, images, rules, inspector, showcase)
         self.decoder = decoder
         self.indexer = indexer
         self.max_fetch_images = max_fetch_images
@@ -293,7 +317,11 @@ class VisibleImageService(ImageCollectionService):
             raise FileExistsError(f"Image {name!r} already exists; use modify_image.")
         analysis = self.indexer.analyze(data, modified=replace)
         with self.storage.writing(path, data):
-            return self.indexer.store(name, data, analysis)
+            stored = self.indexer.store(name, data, analysis)
+        # A replacement keeps its place; a new image joins its look-alikes.
+        if not replace and self.showcase:
+            self.showcase.place(name)
+        return stored
 
     def upload(self, requested_name: str | None, data: bytes) -> dict[str, Any]:
         """Add chat-supplied bytes, adapting the name instead of rejecting it.
@@ -725,6 +753,9 @@ class HiddenImageService(ImageCollectionService):
         for name in clean_names:
             self.storage.existing_path(name)
         changed = self.images.set_hidden(clean_names, hidden)
+        if not hidden and self.showcase:
+            for name in changed:
+                self.showcase.place(name)
         return {
             "status": "hidden" if hidden else "restored",
             "names": changed,
@@ -787,6 +818,7 @@ class VisiaService:
         downloads: ImageDownloadService,
         uploads: UploadLinkService,
         previews: ImagePreviewService,
+        showcase: ShowcaseSorter,
     ) -> None:
         self.visible = visible
         self.hidden = hidden
@@ -796,6 +828,7 @@ class VisiaService:
         self.downloads = downloads
         self.uploads = uploads
         self.previews = previews
+        self.showcase = showcase
 
     @classmethod
     def create(
@@ -804,6 +837,7 @@ class VisiaService:
         images: ImageRepository,
         public_urls: PublicURLRepository,
         analyzer: OllamaVisionAnalyzer,
+        embedder: SiglipEmbedder | None = None,
     ) -> "VisiaService":
         """Wire the use cases around the given persistence and analysis adapters."""
         rules = MetadataRules(config.max_tags, config.search_stop_words)
@@ -811,7 +845,8 @@ class VisiaService:
         urls = PublicURLService(public_urls)
         urls.seed(config.public_base_url)
         inspector = ImageInspector()
-        indexer = ImageIndexer(storage, images, analyzer, urls, inspector, rules)
+        indexer = ImageIndexer(storage, images, analyzer, urls, inspector, rules, embedder)
+        showcase = ShowcaseSorter(images)
         visible = VisibleImageService(
             storage,
             images,
@@ -821,10 +856,11 @@ class VisiaService:
             inspector,
             config.max_fetch_images,
             config.max_fetch_bytes,
+            showcase,
         )
         return cls(
             visible=visible,
-            hidden=HiddenImageService(storage, images, rules, inspector),
+            hidden=HiddenImageService(storage, images, rules, inspector, showcase),
             search=SearchService(images, rules, config.search_limit_max),
             indexer=indexer,
             urls=urls,
@@ -845,4 +881,5 @@ class VisiaService:
             previews=ImagePreviewService(
                 visible, PreviewRenderer(config.display_max_edge), config.max_fetch_images
             ),
+            showcase=showcase,
         )

@@ -153,7 +153,10 @@ class VisiaMCPTools:
 
         @server.tool()
         async def list_images(limit: int = 50, offset: int = 0, include_preview: bool = False):
-            """List visible images newest first, one page at a time.
+            """List visible images in gallery order, one page at a time.
+
+            Gallery order is newest first, or the showcase order saved by
+            sort_images.
 
             Each image has its exact name, caption, tags, favorite flag, size, and
             public_url. Follow next_offset for the next page (it is null on the
@@ -242,10 +245,30 @@ class VisiaMCPTools:
             return await offload(visible.stats, top_tags)
 
         @server.tool()
+        async def sort_images(
+            order: Literal["similarity", "newest"] = "similarity", start: str | None = None
+        ) -> dict[str, Any]:
+            """Arrange the visible gallery for showcasing, or return it to newest first.
+
+            - similarity: orders every visible image so neighbors look alike,
+              by the cosine similarity of their SigLIP image embeddings, so
+              alike images form runs. It starts from start (an exact image
+              name) or the newest image. Images without an embedding yet are
+              listed and shown first; backfill_metadata embeds them. The
+              order is saved: the web gallery, Favorites, and list_images follow
+              it. Images added or restored later are slotted in next to their
+              most similar neighbors; sort again now and then to tidy the order.
+            - newest: clears the saved order.
+            Takes well under a second.
+            """
+            return await offload(self.service.showcase.sort, order, start)
+
+        @server.tool()
         async def backfill_metadata() -> dict[str, Any]:
             """Analyze files missing current metadata; idempotent by hash/model.
 
-            Also adds the "ai info" tag to already-indexed AI-generated images.
+            Also adds the "ai info" tag to already-indexed AI-generated images,
+            and a SigLIP embedding (made on the GPU) to images missing one.
             """
             return await offload(indexer.backfill)
 
@@ -322,6 +345,10 @@ class VisiaMCPTools:
             - content_base64: Base64 image bytes; only practical for small images.
             To upload a local file from a shell or code sandbox, use
             create_upload_link instead of Base64.
+
+            When you generate an image to store here, make it landscape with a
+            3:2 aspect ratio (4.5 x 3, e.g. 1536x1024) unless the user asks for
+            another shape.
 
             name is optional. The extension is corrected to match the image
             format, a taken name gets a numeric suffix, and an exact duplicate of a

@@ -25,6 +25,15 @@ def search_vector_sql(name: str, caption: str, tags: str) -> str:
     )
 
 
+def vector_literal(embedding: list[float] | None) -> str | None:
+    """pgvector's text form of an embedding, or None when there is none."""
+    return "[" + ",".join(str(value) for value in embedding) + "]" if embedding else None
+
+
+def parse_vector(text: str | None) -> list[float] | None:
+    return [float(value) for value in text.strip("[]").split(",")] if text else None
+
+
 def public_url_sql(base_url_parameter: str) -> str:
     """Build a stable public URL from the configured base and immutable image ID."""
     return f"{base_url_parameter} || '{PUBLIC_IMAGE_PATH}' || image_id::text"
@@ -63,8 +72,11 @@ class ImageRepository(Repository):
 
     COLUMNS = (
         "name, size_bytes, content_sha256, caption, tags, analysis_model, "
-        "updated_at, hidden, favorite, public_url, image_id"
+        "updated_at, hidden, favorite, public_url, image_id, showcase_rank, embedding_model"
     )
+    # Unranked images (new uploads, or every image when no showcase order is
+    # saved) come first, newest first; then the saved similarity order.
+    GALLERY_ORDER = "showcase_rank NULLS FIRST, updated_at DESC, name"
 
     def upsert(self, record: ImageRecord, public_base_url: str) -> Row:
         """Insert or replace metadata and assign its stable public URL."""
@@ -75,18 +87,21 @@ class ImageRepository(Repository):
             connection.execute(
                 f"""INSERT INTO image_metadata
                        (name, size_bytes, content_sha256, caption, tags,
-                        analysis_model, search_vector)
+                        analysis_model, embedding, embedding_model, search_vector)
                     VALUES (%(name)s, %(size_bytes)s, %(content_sha256)s,
-                            %(caption)s, %(tags)s, %(analysis_model)s, {vector})
+                            %(caption)s, %(tags)s, %(analysis_model)s,
+                            %(embedding)s::vector, %(embedding_model)s, {vector})
                     ON CONFLICT (name) DO UPDATE SET
                         size_bytes = EXCLUDED.size_bytes,
                         content_sha256 = EXCLUDED.content_sha256,
                         caption = EXCLUDED.caption,
                         tags = EXCLUDED.tags,
                         analysis_model = EXCLUDED.analysis_model,
+                        embedding = EXCLUDED.embedding,
+                        embedding_model = EXCLUDED.embedding_model,
                         search_vector = EXCLUDED.search_vector,
                         updated_at = now()""",
-                asdict(record),
+                {**asdict(record), "embedding": vector_literal(record.embedding)},
             )
             row = connection.execute(
                 f"""UPDATE image_metadata SET public_url = {public_url_sql('%s')}
@@ -104,21 +119,65 @@ class ImageRepository(Repository):
         )
 
     def list(self, hidden: bool | None = False) -> list[Row]:
-        """List visible, hidden, or all records newest first."""
+        """List visible, hidden, or all records in gallery order (newest first unless showcased)."""
         return self.fetch_all(
             f"""SELECT {self.COLUMNS} FROM image_metadata
                 WHERE %s::boolean IS NULL OR hidden = %s
-                ORDER BY updated_at DESC, name""",
+                ORDER BY {self.GALLERY_ORDER}""",
             (hidden, hidden),
         )
 
     def list_favorites(self) -> list[Row]:
-        """List visible favorite images newest first."""
+        """List visible favorite images in gallery order."""
         return self.fetch_all(
             f"""SELECT {self.COLUMNS} FROM image_metadata
                 WHERE favorite = true AND hidden = false
-                ORDER BY updated_at DESC, name"""
+                ORDER BY {self.GALLERY_ORDER}"""
         )
+
+    def showcase_candidates(self) -> list[Row]:
+        """Visible images newest first, with their embeddings (None while missing) and ranks."""
+        rows = self.fetch_all(
+            """SELECT name, embedding::text AS embedding, showcase_rank
+               FROM image_metadata WHERE hidden = false ORDER BY updated_at DESC, name"""
+        )
+        return [{**row, "embedding": parse_vector(row["embedding"])} for row in rows]
+
+    def save_embedding(self, name: str, embedding: list[float], model: str) -> None:
+        """Store an image's embedding without touching its other metadata."""
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE image_metadata SET embedding = %s::vector, embedding_model = %s WHERE name = %s",
+                (vector_literal(embedding), model, name),
+            )
+
+    def save_showcase_order(self, names: list[str]) -> None:
+        """Rank visible images in the given order; any visible image not listed becomes unranked."""
+        with self.database.connect() as connection:
+            connection.execute("UPDATE image_metadata SET showcase_rank = NULL WHERE showcase_rank IS NOT NULL")
+            connection.execute(
+                """UPDATE image_metadata AS image SET showcase_rank = ordered.rank
+                   FROM unnest(%s::text[]) WITH ORDINALITY AS ordered(name, rank)
+                   WHERE image.name = ordered.name AND image.hidden = false""",
+                (names,),
+            )
+
+    def insert_showcase_rank(self, name: str, rank: int) -> None:
+        """Give a visible image ``rank`` in the saved order, moving later images down one."""
+        with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE image_metadata SET showcase_rank = showcase_rank + 1 WHERE showcase_rank >= %s", (rank,)
+            )
+            connection.execute(
+                "UPDATE image_metadata SET showcase_rank = %s WHERE name = %s AND hidden = false", (rank, name)
+            )
+
+    def clear_showcase_order(self) -> int:
+        """Return the gallery to newest first; the count of images that were ranked."""
+        rows = self.fetch_all(
+            "UPDATE image_metadata SET showcase_rank = NULL WHERE showcase_rank IS NOT NULL RETURNING name"
+        )
+        return len(rows)
 
     def is_hidden(self, name: str) -> bool:
         """Return whether the named image belongs to the Hidden Vault."""
@@ -185,7 +244,7 @@ class ImageRepository(Repository):
         if not names:
             return []
         rows = self.fetch_all(
-            """UPDATE image_metadata SET hidden = %s, updated_at = now()
+            """UPDATE image_metadata SET hidden = %s, showcase_rank = NULL, updated_at = now()
                WHERE name = ANY(%s) AND hidden <> %s RETURNING name""",
             (hidden, names, hidden),
         )

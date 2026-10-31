@@ -11,6 +11,8 @@ class ImageAnalysis(BaseModel):
 
     caption: str = Field(min_length=3, max_length=500)
     tags: list[str] = Field(min_length=1, max_length=16)
+    # The SigLIP image embedding, or None when the GPU could not make one.
+    embedding: list[float] | None = None
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,8 @@ class ImageRecord:
     caption: str
     tags: list[str]
     analysis_model: str
+    embedding: list[float] | None = None
+    embedding_model: str | None = None
 
 
 @dataclass(frozen=True)

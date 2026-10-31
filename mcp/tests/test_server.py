@@ -18,6 +18,7 @@ from starlette.testclient import TestClient
 
 from fakes import (
     FakeAnalyzer,
+    FakeEmbedder,
     FakeImageRepository,
     FakePublicURLRepository,
     image_bytes,
@@ -50,11 +51,13 @@ class ServerTestCase(unittest.TestCase):
             download_dir=Path(self.downloads_temp.name),
         )
         self.repository = FakeImageRepository()
+        self.embedder = FakeEmbedder()
         self.service = VisiaService.create(
             self.config,
             self.repository,
             FakePublicURLRepository(self.repository),
             FakeAnalyzer(),
+            self.embedder,
         )
         self.branding = ServerBranding()
         # Match production: a non-localhost bind leaves DNS-rebinding checks off for TestClient.
@@ -68,7 +71,9 @@ class ServerTestCase(unittest.TestCase):
                 self.config.max_upload_redirects,
             ),
         )
-        VisiaHTTPRoutes(self.server, self.service, self.branding, "x" * 32)
+        VisiaHTTPRoutes(
+            self.server, self.service, self.branding, "x" * 32, self.mcp_tools.sources, "c" * 32
+        )
         self.service.visible.ingest("one.png", png_payload("red", (1200, 800)))
         self.service.visible.ingest("two.png", png_payload("blue", (640, 480)))
 
@@ -252,6 +257,35 @@ class MCPToolTests(ServerTestCase):
         self.assertTrue(names)
         with self.assertRaisesRegex(ToolError, "exclude_tags must be lowercase"):
             self.call("search_images", {"exclude_tags": ["AI info"]})
+
+    def test_uploads_store_their_embedding_and_backfill_fills_gaps(self) -> None:
+        stored = self.repository.rows["one.png"]
+        self.assertEqual((len(stored["embedding"]), stored["embedding_model"]), (3, "fake-siglip"))
+        stored.update(embedding=None, embedding_model=None)
+        result = self.call("backfill_metadata", {})
+        self.assertEqual(result["embedded_count"], 1)
+        self.assertEqual(self.repository.rows["one.png"]["embedding_model"], "fake-siglip")
+
+    def test_upload_without_a_gpu_is_stored_without_embedding(self) -> None:
+        from app.integrations.embeddings import EmbeddingUnavailableError
+
+        def no_gpu(data):
+            raise EmbeddingUnavailableError("Image embeddings need a CUDA GPU.")
+
+        self.embedder.embed_image = no_gpu
+        created = self.call("upload_image", {"name": "three.png", "content_base64": png_payload("red", (30, 20))})
+        self.assertEqual(created["status"], "created")
+        self.assertIsNone(self.repository.rows["three.png"]["embedding"])
+        result = self.call("backfill_metadata", {})
+        self.assertEqual((result["embedded_count"], "CUDA" in result["embedding_error"]), (0, True))
+
+    def test_upload_after_sorting_takes_a_place_in_the_order(self) -> None:
+        self.call("sort_images", {"order": "similarity"})
+        self.assertEqual(self.call("sort_images", {"order": "similarity", "start": "one.png"})["start"], "one.png")
+        created = self.call("upload_image", {"name": "three.png", "content_base64": png_payload("red", (300, 200))})
+        self.assertEqual(created["status"], "created")
+        self.assertIsNotNone(self.repository.rows["three.png"]["showcase_rank"])
+        self.assertEqual(self.call("list_images", {})["count"], 3)
 
     def test_rename_image_preserves_public_url(self) -> None:
         renamed = self.call("rename_image", {"name": "one.png", "new_name": "renamed.png"})
@@ -648,6 +682,62 @@ class HTTPRouteTests(ServerTestCase):
         self.assertEqual(hidden.json()["status"], "hidden")
         self.assertEqual([image["name"] for image in images], ["one.png"])
         self.assertEqual(updated.json()["tags"], ["cat", "sofa", "private"])
+
+
+class CompanionImageRouteTests(ServerTestCase):
+    HEADERS = {"Authorization": f"Bearer {'c' * 32}"}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.http = self.client().__enter__()
+
+    def tearDown(self) -> None:
+        self.http.__exit__(None, None, None)
+        super().tearDown()
+
+    def post(self, body: dict, headers: dict | None = None):
+        return self.http.post("/api/companion/images", json=body, headers=headers or self.HEADERS)
+
+    def test_requires_the_companion_token(self) -> None:
+        for headers in ({"X-Other": "1"}, {"Authorization": f"Bearer {'x' * 32}"}):
+            with self.subTest(headers):
+                response = self.post({"content_base64": png_payload("teal")}, headers)
+                self.assertEqual(response.status_code, 401)
+
+    def test_stores_tagged_image_and_returns_its_stable_url(self) -> None:
+        response = self.post(
+            {"name": "Schezuan Rice", "content_base64": png_payload("teal"), "tags": ["Food", "Vita"]}
+        )
+        body = response.json()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual((body["status"], body["name"]), ("created", "Schezuan Rice.png"))
+        self.assertIn("food", body["tags"])
+        self.assertIn("vita", body["tags"])
+        self.assertTrue(body["public_url"].endswith(f"/api/public/images/{body['image_id']}"))
+
+    def test_retry_with_same_bytes_returns_the_stored_image(self) -> None:
+        payload = {"name": "rice.png", "content_base64": png_payload("teal")}
+        first, second = self.post(payload).json(), self.post(payload).json()
+        self.assertEqual(second["status"], "duplicate")
+        self.assertEqual(second["public_url"], first["public_url"])
+
+    def test_downloads_url_sources(self) -> None:
+        self.mcp_tools.sources._download = lambda url: (image_bytes("JPEG"), url)
+        body = self.post({"image_url": "https://files.example.test/generated/dish.jpg"}).json()
+        self.assertEqual((body["status"], body["name"]), ("created", "dish.jpg"))
+
+    def test_rejects_bad_tags_and_missing_source(self) -> None:
+        self.assertIn("tags", self.post({"content_base64": png_payload(), "tags": "food"}).json()["error"])
+        self.assertIn("exactly one", self.post({"name": "x.png"}).json()["error"])
+
+    def test_route_is_off_without_a_token(self) -> None:
+        server = FastMCP("Luna Visia off", host="0.0.0.0")
+        VisiaHTTPRoutes(server, self.service, self.branding, "x" * 32, self.mcp_tools.sources)
+        with TestClient(server.streamable_http_app()) as client:
+            response = client.post(
+                "/api/companion/images", json={"content_base64": png_payload()}, headers=self.HEADERS
+            )
+        self.assertEqual(response.status_code, 503)
 
 
 class BrandingTests(ServerTestCase):

@@ -167,6 +167,8 @@ LUNAVISIA_ALLOWED_EMAILS=you@example.com
 openssl rand -hex 32
 ```
 
+`LUNAVISIA_COMPANION_TOKEN` is optional. When it is set, Luna Vita and Luna Vibia can store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Use one random value, set the same in all three apps' `.env` files. Leave it empty to turn the route off.
+
 Separate multiple emails with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
@@ -313,7 +315,10 @@ Luna Visia exposes these tools to connected MCP clients:
 - `update_images_metadata` - apply caption and tag changes to up to 100 visible images in one call, for example LLM classification results from `list_image_metadata`. Each entry (`name`, optional `caption`, `add_tags`, `remove_tags`) is applied independently and reported under `updated` or `failed`; a capitalized tag anywhere rejects the whole batch with nothing changed.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
 - `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. `exclude_tags` leaves out images carrying those tags and can be the only filter (`exclude_tags=["ai info"]` finds every image not marked as AI-generated). Tag filters must be lowercase too.
-- `backfill_metadata` - generate missing or stale metadata for imported files, and add the `ai info` tag to already-indexed AI-generated images.
+- `sort_images` - arrange the visible gallery for showcasing: `order="similarity"` saves an order where neighbors look alike, by the cosine similarity of their SigLIP image embeddings, starting from `start` or the newest image. The web gallery, Favorites, and `list_images` follow it. Images added or restored afterwards are slotted in between their most similar neighbors; an occasional full sort tidies the drift. `order="newest"` clears it.
+- `backfill_metadata` - generate missing or stale metadata for imported files, add the `ai info` tag to already-indexed AI-generated images, and embed images that lack a SigLIP embedding.
+
+Every image also gets a SigLIP 2 image embedding (`google/siglip2-base-patch16-224`, 768 numbers) when it is analyzed, stored in the pgvector `embedding` column with an HNSW index for other apps and future search. Embeddings are made on the GPU only (fp16, about 0.75 GB): without a CUDA device, or if the GPU stays out of memory, the image is stored without one and `backfill_metadata` adds it later. The model is baked into the image, so nothing is downloaded at runtime.
 
 Images whose embedded metadata says generative AI made them get the `ai info` tag automatically on upload or replacement. The signals are a C2PA or XMP IPTC digital source type of `trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia` (as in ChatGPT/gpt-image output), a known generator in EXIF `Software` or XMP `CreatorTool`, or diffusion parameters in PNG text chunks. Search for them with `search_images(tags=["ai info"])`. The tag is enforced on every edit path (MCP tools, batch updates, and the web UI, for visible and hidden images): removing `ai info` from an image whose metadata marks it as AI-generated is rejected, and editing such an image that lacks the tag adds it back. On other images the tag can be added or removed freely.
 

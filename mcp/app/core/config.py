@@ -25,6 +25,13 @@ class AppConfig:
     # Leftover archives without a ticket are only removed once clearly abandoned, so a
     # concurrent purge never deletes an archive whose ticket is being written.
     DOWNLOAD_LEFTOVER_GRACE_SECONDS: ClassVar[int] = 60 * 60
+    # SigLIP 2 image embeddings (768 numbers per image), made on the GPU only. They
+    # share a space with SigLIP's text embeddings, so descriptions can find images.
+    EMBEDDING_MODEL: ClassVar[str] = "google/siglip2-base-patch16-224"
+    EMBEDDING_DIMENSIONS: ClassVar[int] = 768
+    EMBEDDING_INPUT_EDGE: ClassVar[int] = 224
+    EMBEDDING_GPU_ATTEMPTS: ClassVar[int] = 3
+    EMBEDDING_GPU_RETRY_SECONDS: ClassVar[float] = 2.0
     FULL_DETAIL_MAX_IMAGES: ClassVar[int] = 20
     BATCH_MAX_IMAGES: ClassVar[int] = 100
     CREDENTIAL_SALT_BYTES: ClassVar[int] = 16
@@ -35,6 +42,8 @@ class AppConfig:
     vision_model: str
     public_base_url: str = ""
     api_token: str = ""
+    # Credential Luna Vita and Luna Vibia send to store images here ("" = route off).
+    companion_token: str = ""
     host: str = "0.0.0.0"
     port: int = 8000
     allowed_formats: dict[str, str] = field(
@@ -128,6 +137,11 @@ class AppConfig:
             raise RuntimeError(
                 "LUNAVISIA_API_TOKEN must contain at least 32 characters."
             )
+        companion_token = os.getenv("LUNAVISIA_COMPANION_TOKEN", "").strip()
+        if companion_token and len(companion_token) < 32:
+            raise RuntimeError(
+                "LUNAVISIA_COMPANION_TOKEN must contain at least 32 characters."
+            )
         mcp_public_url = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
         if mcp_public_url:
             parsed_public_url = urlparse(mcp_public_url)
@@ -141,4 +155,5 @@ class AppConfig:
             vision_model=vision_model,
             public_base_url=public_base_url,
             api_token=api_token,
+            companion_token=companion_token,
         )

@@ -108,11 +108,13 @@ class ImageCollection:
 
     @classmethod
     def from_metadata(cls, files: ImageFiles, metadata: list[dict]) -> "ImageCollection":
+        """Newest files first, or the server's showcase order once one is saved."""
         metadata_by_name = {item["name"]: item for item in metadata}
-        return cls(
-            [path for path in files.list() if path.name in metadata_by_name],
-            metadata_by_name,
-        )
+        paths = [path for path in files.list() if path.name in metadata_by_name]
+        if any(item.get("showcase_rank") is not None for item in metadata):
+            # Stable sort: unranked (new) images keep their newest-first order ahead of ranked ones.
+            paths.sort(key=lambda path: metadata_by_name[path.name].get("showcase_rank") or 0)
+        return cls(paths, metadata_by_name)
 
     @classmethod
     def visible(cls, api: LunaVisiaAPI, files: ImageFiles) -> "ImageCollection":

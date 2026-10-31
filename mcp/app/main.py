@@ -11,6 +11,7 @@ from app.transport.mcp_tools import VisiaMCPTools
 from app.core.models import MetadataRules
 from app.integrations.remote import ImageSourceResolver
 from app.data.repositories import ImageRepository, PublicURLRepository
+from app.integrations.embeddings import SiglipEmbedder
 from app.services.application import VisiaService
 from app.integrations.vision import OllamaVisionAnalyzer
 
@@ -31,19 +32,19 @@ class LunaVisiaApplication:
                 config.vision_model,
                 MetadataRules(config.max_tags, config.search_stop_words),
             ),
+            SiglipEmbedder(),
         )
         self.branding = ServerBranding(config.mcp_public_url)
         self.mcp = FastMCP(
             "Luna Visia", host=config.host, port=config.port, icons=self.branding.mcp_icons()
         )
-        VisiaMCPTools(
-            self.mcp,
-            self.service,
-            ImageSourceResolver(
-                self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
-            ),
+        sources = ImageSourceResolver(
+            self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
         )
-        VisiaHTTPRoutes(self.mcp, self.service, self.branding, config.api_token)
+        VisiaMCPTools(self.mcp, self.service, sources)
+        VisiaHTTPRoutes(
+            self.mcp, self.service, self.branding, config.api_token, sources, config.companion_token
+        )
 
     def run(self) -> None:
         """Serve Luna Visia over the streamable HTTP transport."""

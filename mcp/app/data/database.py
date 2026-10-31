@@ -6,6 +6,10 @@ from contextlib import contextmanager
 import psycopg
 from psycopg.rows import dict_row
 
+from app.core.config import AppConfig
+
+EMBEDDING_DIMENSIONS = AppConfig.EMBEDDING_DIMENSIONS
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS image_metadata (
     name text PRIMARY KEY,
@@ -37,6 +41,16 @@ SET search_vector =
     setweight(to_tsvector('english', regexp_replace(name, '[._-]+', ' ', 'g')), 'A') ||
     setweight(to_tsvector('english', caption), 'A') ||
     setweight(to_tsvector('english', array_to_string(tags, ' ')), 'B');
+-- Showcase: an optional similarity order for the visible gallery (NULL = newest first).
+ALTER TABLE image_metadata ADD COLUMN IF NOT EXISTS showcase_rank integer;
+ALTER TABLE image_metadata DROP COLUMN IF EXISTS color_signature;
+ALTER TABLE image_metadata DROP COLUMN IF EXISTS signature_sha;
+-- SigLIP 2 image embeddings (pgvector), and the model that made each one.
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE image_metadata ADD COLUMN IF NOT EXISTS embedding vector(__EMBEDDING_DIMENSIONS__);
+ALTER TABLE image_metadata ADD COLUMN IF NOT EXISTS embedding_model text;
+CREATE INDEX IF NOT EXISTS image_metadata_embedding_idx
+    ON image_metadata USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS image_metadata_search_idx
     ON image_metadata USING gin (search_vector);
 CREATE INDEX IF NOT EXISTS image_metadata_tags_idx
@@ -61,7 +75,7 @@ CREATE TABLE IF NOT EXISTS vault_config (
     public_base_url text NOT NULL,
     updated_at timestamptz NOT NULL DEFAULT now()
 );
-"""
+""".replace("__EMBEDDING_DIMENSIONS__", str(EMBEDDING_DIMENSIONS))
 
 
 class Database:

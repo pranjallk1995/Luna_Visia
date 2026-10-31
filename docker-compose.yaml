@@ -4,6 +4,9 @@ services:
     image: ghcr.io/pranjallk1995/luna-visia-mcp:latest
     working_dir: /workspace/mcp
     restart: unless-stopped
+    # SigLIP image embeddings are made on the GPU only; without one, images are
+    # stored without embeddings (backfill_metadata adds them once a GPU is back).
+    gpus: all
     environment:
       DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-sentia-db:5432/lunavisia
       IMAGE_DIR: /data/images
@@ -12,6 +15,8 @@ services:
       LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL}
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-http://localhost:18000}
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
+      # Lets Luna Vita and Luna Vibia store new images here (the same value in all three).
+      LUNAVISIA_COMPANION_TOKEN: ${LUNAVISIA_COMPANION_TOKEN:-}
     expose:
       - "8000"
     ports:
