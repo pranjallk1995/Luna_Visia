@@ -1,4 +1,4 @@
-import { Eye, LayoutGrid, List, Lock, LogOut, Star, Upload, type LucideIcon } from "lucide-react";
+import { Eye, Heart, LayoutGrid, List, Lock, LogOut, Upload, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useSession, type Section, type Session } from "./api";
@@ -11,7 +11,7 @@ const SUBTITLE = "Private AI-managed image storage";
 
 const SECTIONS: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "view", label: "View Images", icon: Eye },
-  { id: "favorites", label: "Favorite Images", icon: Star },
+  { id: "favorites", label: "Favorite Images", icon: Heart },
   { id: "hidden", label: "Hidden Images", icon: Lock },
 ];
 

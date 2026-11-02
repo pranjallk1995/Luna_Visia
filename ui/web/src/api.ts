@@ -61,8 +61,9 @@ const post = <T>(path: string, body: unknown) =>
 
 const segment = encodeURIComponent;
 
+// Browsers keep thumbnails for a year, so a new shape needs a new URL: change `shape` with THUMBNAIL_SIZE.
 export const thumbnailUrl = (image: ImageRecord) =>
-  `/app/thumbnails/${segment(image.name)}?v=${image.version}`;
+  `/app/thumbnails/${segment(image.name)}?v=${image.version}&shape=3x2`;
 
 export const fileUrl = (image: ImageRecord) => `/app/files/${segment(image.name)}?v=${image.version}`;
 
@@ -77,6 +78,18 @@ export function useSession() {
     queryKey: ["session"],
     queryFn: () => request<Session>("/auth/session"),
     staleTime: 60_000,
+  });
+}
+
+/** What the image file says about itself, read only for the image on screen because it opens the file. */
+export function useGenerator(image: ImageRecord, enabled: boolean) {
+  return useQuery({
+    queryKey: ["generator", image.name, image.version],
+    queryFn: () => request<{ generator?: string | null }>(`/api/images/${segment(image.name)}/metadata`),
+    select: (embedded) => embedded.generator ?? null,
+    enabled,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 

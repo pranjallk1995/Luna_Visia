@@ -49,8 +49,9 @@ class UIConfig:
     UPLOAD_TIMEOUT_SECONDS: ClassVar[float] = 360.0
     # A 50 MiB image grows by a third as base64, plus its JSON wrapper.
     MAX_REQUEST_BYTES: ClassVar[int] = 70 * 1024 * 1024
-    # Twice the 420 x 248 card, so thumbnails stay sharp on high-density screens.
-    THUMBNAIL_SIZE: ClassVar[tuple[int, int]] = (840, 496)
+    # Twice the 420 x 280 card, so thumbnails stay sharp on high-density screens.
+    # Changing the shape also needs a new `shape` in the web app's thumbnailUrl.
+    THUMBNAIL_SIZE: ClassVar[tuple[int, int]] = (840, 560)
     THUMBNAIL_QUALITY: ClassVar[int] = 80
     THUMBNAIL_CACHE_ENTRIES: ClassVar[int] = 256
     FACTS_CACHE_ENTRIES: ClassVar[int] = 4096

@@ -26,7 +26,7 @@ export function Pager({ page, count, onChange }: Props) {
       >
         {Array.from({ length: count }, (_, index) => (
           <option key={index} value={index}>
-            Page {index + 1} of {count}
+            {index + 1}
           </option>
         ))}
       </select>
