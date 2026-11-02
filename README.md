@@ -23,7 +23,7 @@ operations without repeatedly opening every original image.
   <img src="docs/assets/luna-visia-ai-assistant.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
 </p>
 
-The Streamlit interface lets you upload, search, view, favorite, download, hide,
+The web interface lets you upload, search, view, favorite, download, hide,
 restore, and delete images. Image data, metadata, and AI models persist in Docker volumes,
 while sign-in-gated hidden images stay separate from normal galleries and searches.
 
@@ -60,7 +60,7 @@ through natural-language requests.
 
 ### AI-assisted image ingestion
 
-- Upload images through the Streamlit UI or MCP tools.
+- Upload images through the web UI or MCP tools.
 - Generate a concise caption and normalized searchable tags with the local Ollama vision model.
 - Run the vision model and the embedded-provenance check as parallel branches of a LangGraph graph (`mcp/app/services/analysis_graph.py`) that then adds the `ai modified` and `ai info` system tags.
 - Preserve the content hash, source size, analysis model, timestamps, and optional public URL in PostgreSQL.
@@ -86,7 +86,7 @@ through natural-language requests.
 
 ### Local AI and assistant access
 
-- Run MCP/API and Streamlit as one local Docker Compose stack, using the PostgreSQL, Ollama, and Adminer services from Luna Sentia.
+- Run MCP/API and the web UI as one local Docker Compose stack, using the PostgreSQL, Ollama, and Adminer services from Luna Sentia.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
 - Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback.
@@ -97,7 +97,7 @@ through natural-language requests.
 
 ![Luna ecosystem architecture](docs/assets/luna-ecosystem.svg)
 
-Every Luna app is a Streamlit UI plus a FastMCP service on Luna Sentia's
+Luna Visia is a React UI plus a FastMCP service on Luna Sentia's
 `luna_sentia_network`: its data lives in Sentia's PostgreSQL, people sign in
 through Sentia's `auth`, and model calls go to Sentia's Ollama. Orange lines are
 Visia image URLs that other apps use: food images for Vita, room images for
@@ -109,7 +109,7 @@ beats of the track Vibia plays, which Lumia's lights follow.
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
-| UI | Streamlit | Upload, search, galleries, Favorites, downloads, and authenticated hidden-image workflows |
+| UI | React + TypeScript (Vite), served by a Starlette gateway | Upload, search, galleries, Favorites, downloads, and authenticated hidden-image workflows |
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
 | Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen3-vl:8b-instruct` by default |
@@ -121,7 +121,7 @@ beats of the track Vibia plays, which Lumia's lights follow.
 The main service flow is:
 
 ```text
-Streamlit UI or MCP client
+React UI (through its gateway) or MCP client
         -> Luna Visia MCP/API
         -> image volume + PostgreSQL metadata
         -> Luna Sentia Ollama (luna-sentia-ollama) when image content changes
@@ -395,22 +395,24 @@ Luna Vita, Luna Lumia, and Luna Visia share this layout:
 │   │                       # and the app's own domain modules
 │   ├── scripts/            # one-off maintenance scripts, when needed
 │   └── tests/              # python -m unittest discover -s tests
-└── ui/                     # Streamlit interface
-    ├── Dockerfile
+└── ui/                     # Web interface
+    ├── Dockerfile          # builds the React app, then the gateway image
     ├── requirements.txt
-    ├── .streamlit/         # Streamlit theme and server settings
-    ├── assets/             # logos
-    ├── app.py              # entry point and page composition
+    ├── gateway.py          # serves the app; checks sign-in; fronts the backend
+    ├── images.py           # vault file facts and cached WebP thumbnails
+    ├── sso.py              # single sign-on through Luna Sentia
     ├── config.py           # environment-backed settings
-    ├── styles.py           # shared dark theme
-    ├── services/           # backend API client, caching, and session state
-    ├── domain/             # Streamlit-free logic and view models, when the app has any
-    ├── views/              # Streamlit rendering: tabs, sections, dialogs, shared widgets
-    └── tests/              # UI logic tests, when the app has any
+    ├── assets/             # source logos
+    ├── tests/              # gateway tests: python -m unittest discover -s tests
+    └── web/                # the React app (TypeScript, Vite)
+        ├── public/         # logo and favicon
+        └── src/            # App, api, uploads, lib, styles, components/
 ```
 
-Dependencies point one way: `views/` uses `services/` and `domain/`, and `domain/`
-imports neither Streamlit nor the API client, so it can be tested on its own.
+The browser runs the interface, so a click, a search, or a page change needs no
+server round trip. All data goes through the gateway, which checks the shared
+Luna session and allowlist first and holds the backend's API token, so the token
+never reaches the browser. Only the backend routes the UI uses are forwarded.
 
 ## Development workflow
 
@@ -421,8 +423,10 @@ source changes:
 docker compose up --build --watch
 ```
 
-UI source changes are synchronized into `/workspace/ui`, where Streamlit reloads
-them automatically. MCP source changes are synchronized into `/workspace/mcp`
+Gateway changes are synchronized into `/workspace/ui` and restart the gateway;
+changes under `ui/web/` rebuild the image. For hot reload while working on the
+browser app, run `npm install && npm run dev` in `ui/web/`. Its tests run with
+`npm test`, and `npm run build` type-checks it. MCP source changes are synchronized into `/workspace/mcp`
 and restart only the MCP service so newly registered tools become available from
 the server. Changes to either service's `requirements.txt` or `Dockerfile`
 rebuild that service. Python caches, test caches, and MCP tests are ignored by the
@@ -438,22 +442,16 @@ change so the client refreshes its discovered tool catalog.
 
 ### UI modules
 
-- `ui/sso.py` - single sign-on through Luna Sentia: reads the shared `luna_sso` cookie, checks it with Sentia, and applies the allowlist.
-- `ui/app.py` - `LunaVisiaApp` composition root: header, `GalleryNavigation`, and the upload dialog; each section is a tab class.
-- `ui/services/api.py` - `LunaVisiaAPI` keeps backend routes, the private service credential, timeouts, and error text out of the views.
-- `ui/config.py` - `UIConfig` reads UI environment settings such as the API URL, API token, allowed Google accounts, image directory, gallery size, and supported image formats.
-- `ui/services/state.py` - `SessionState` owns session-state defaults and cross-view transitions such as pending delete/hide and gallery refresh.
-- `ui/services/images.py` - `ImageFiles` (vault file listing and cached thumbnails, previews, and size facts) and `ImageCollection` (files plus metadata, search filtering).
-- `ui/styles.py` - `LunaStyle` maintains the shared dark visual system, component spacing, and control styling.
-- `ui/views/shared.py` - `VisiaContext` (shared dependencies), `VisiaTab` base class, `ResponsiveLayout`, `SearchFilter`, and `ImageLabel`.
-- `ui/views/gallery.py` - `ImageGallery`, the grid/list gallery with favorite overlay, item menu, and confirmation dialogs used by every section.
-- `ui/views/actions.py` - `GalleryActions`, `FavoriteActions`, and `HiddenActions`: what each section's gallery may do with an image.
-- `ui/views/pager.py` - `GalleryPager`, pagination with the animated page transition.
-- `ui/views/preview_dialog.py` - `ImagePreviewDialog`, full-size viewing with inline caption and tag editing.
-- `ui/views/view_tab.py`, `favorites_tab.py`, `hidden_tab.py` - the three gallery sections; all are rendered only after the shared sign-in gate.
-- `ui/views/upload_dialog.py` - `UploadDialog`: upload handling, progress feedback, retries, and newly generated captions and tags.
-- `ui/views/__init__.py`, `ui/services/__init__.py` - mark the view and service directories as Python packages.
-- `ui/.streamlit/config.toml` - Streamlit theme settings.
+- `ui/gateway.py` - `UIGateway`: serves the built app, reports the session and settings at `/auth/session`, serves thumbnails and files, and forwards an allowlist of backend routes with the private API token.
+- `ui/images.py` - `ImageFiles`: pairs backend metadata with vault files (size, dimensions, order) and encodes cached WebP thumbnails.
+- `ui/sso.py` - single sign-on through Luna Sentia: checks the shared `luna_sso` cookie with Sentia, and applies the allowlist.
+- `ui/config.py` - `UIConfig` and `SSOConfig`: gateway settings, plus the page size, tag limits, and upload types the browser app reads from `/auth/session`.
+- `ui/web/src/App.tsx` - sign-in pages, header, and section navigation.
+- `ui/web/src/api.ts` - the gateway's routes and the React Query hooks; changes apply on screen first and roll back if the server refuses them.
+- `ui/web/src/uploads.ts` - the upload queue, which keeps running when the dialog is closed.
+- `ui/web/src/lib.ts` - pure helpers for names, sizes, search, and paging.
+- `ui/web/src/components/` - `Gallery`, `ImageCard`, `PreviewDialog`, `UploadDialog`, `ConfirmDialog`, `Dialog`, `Pager`, `SearchBox`, and `Toasts`.
+- `ui/web/src/styles.css` - the Luna visual system.
 - `ui/requirements.txt` - Python dependencies used by the UI container.
 - `ui/Dockerfile` - builds the UI container image.
 
@@ -481,4 +479,4 @@ change so the client refreshes its discovered tool catalog.
 - `mcp/requirements.txt` - Python dependencies used by the MCP container.
 - `mcp/Dockerfile` - builds the MCP container image.
 
-The dark theme is in `ui/.streamlit/config.toml`. Stop the stack with `docker compose down`; named volumes remain.
+The dark theme is in `ui/web/src/styles.css`. Stop the stack with `docker compose down`; named volumes remain.

@@ -1,4 +1,4 @@
-"""Validated presentation and service settings for the Streamlit UI."""
+"""Validated settings for the UI gateway and the browser app it serves."""
 
 import os
 from dataclasses import dataclass
@@ -17,6 +17,7 @@ class SSOConfig:
     # in another app takes effect here within this many seconds.
     RECHECK_SECONDS: ClassVar[int] = 60
     LOOKUP_TIMEOUT_SECONDS: ClassVar[float] = 5.0
+    SESSION_CACHE_ENTRIES: ClassVar[int] = 256
 
     public_url: str
     internal_url: str = "http://luna-sentia-auth:8000"
@@ -32,37 +33,43 @@ class SSOConfig:
 
 @dataclass(frozen=True)
 class UIConfig:
-    """Immutable UI layout and backend-connection settings."""
+    """Immutable gateway settings, plus what the browser app reads from ``/auth/session``."""
 
     UI_ROOT: ClassVar[Path] = Path(__file__).resolve().parent
-    LOGO_PATH: ClassVar[Path] = UI_ROOT / "assets" / "lunavisia_logo.png"
+    # The built React app; the Dockerfile puts it here.
+    STATIC_DIR: ClassVar[Path] = UI_ROOT / "static"
     MAX_TAGS: ClassVar[int] = 32
+    NAME_MAX_CHARS: ClassVar[int] = 200
+    CAPTION_MAX_CHARS: ClassVar[int] = 500
+    IMAGES_PER_PAGE: ClassVar[int] = 12
     UPLOAD_TYPES: ClassVar[tuple[str, ...]] = ("png", "jpg", "jpeg", "gif", "webp")
+    IMAGE_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({".gif", ".jpeg", ".jpg", ".png", ".webp"})
     API_TIMEOUT_SECONDS: ClassVar[float] = 30.0
-    LIST_TIMEOUT_SECONDS: ClassVar[float] = 10.0
     # Uploads wait for the backend's vision model to caption and tag the image.
     UPLOAD_TIMEOUT_SECONDS: ClassVar[float] = 360.0
+    # A 50 MiB image grows by a third as base64, plus its JSON wrapper.
+    MAX_REQUEST_BYTES: ClassVar[int] = 70 * 1024 * 1024
+    # Twice the 420 x 248 card, so thumbnails stay sharp on high-density screens.
+    THUMBNAIL_SIZE: ClassVar[tuple[int, int]] = (840, 496)
+    THUMBNAIL_QUALITY: ClassVar[int] = 80
     THUMBNAIL_CACHE_ENTRIES: ClassVar[int] = 256
-    PREVIEW_CACHE_ENTRIES: ClassVar[int] = 64
-    FACTS_CACHE_ENTRIES: ClassVar[int] = 256
+    FACTS_CACHE_ENTRIES: ClassVar[int] = 4096
+    # Thumbnail and file URLs carry the file's modified time, so they never go stale.
+    IMMUTABLE_CACHE_CONTROL: ClassVar[str] = "private, max-age=31536000, immutable"
+    CONTENT_SECURITY_POLICY: ClassVar[str] = (
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    )
 
     image_dir: Path
     api_url: str
     api_token: str
     allowed_emails: frozenset[str]
     sso: SSOConfig
-    card_size: tuple[int, int] = (420, 248)
-    gallery_corner_radius: int = 10
-    gallery_selection_color: str = "#D4D4D4"
-    gallery_border_thickness: int = 4
-    gallery_max_row_height: int = 240
-    gallery_columns: int = 3
-    images_per_page: int = 12
-    image_extensions: frozenset[str] = frozenset({".gif", ".jpeg", ".jpg", ".png", ".webp"})
 
     @classmethod
     def from_env(cls) -> "UIConfig":
-        """Build and validate UI configuration from environment variables."""
+        """Build and validate gateway configuration from environment variables."""
         api_url = (
             os.getenv("LUNAVISIA_API_URL")
             or os.getenv("LUNAVAULT_API_URL")

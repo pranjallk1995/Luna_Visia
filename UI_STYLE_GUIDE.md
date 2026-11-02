@@ -4,6 +4,11 @@ Shared visual reference for Luna Visia, Luna Vita, and Luna Lumia. This file is
 identical in all three repositories. Any change goes into all three copies at
 the same time.
 
+> **React migration.** On this branch Luna Visia's UI is React, not Streamlit. The
+> palette, type scale, geometry, and header rules below still apply and live in
+> `ui/web/src/styles.css`; the `st.*` calls and `data-testid` selectors describe
+> the apps not yet migrated. Icons come from `lucide-react` instead of Material.
+
 Luna Visia is the reference implementation. When this guide and the code
 disagree, check this guide first, fix the code to match it, and record any
 intended exception under [Known deviations](#known-deviations).
