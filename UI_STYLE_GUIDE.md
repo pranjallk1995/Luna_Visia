@@ -280,7 +280,8 @@ this guide or deliberately accepted here.
 
 | App | Deviation | Guide says |
 | --- | --- | --- |
-| Visia, Vita | Selected and hovered navbar labels turn to primary text (`--lv-text` / `--text`). | Labels stay muted in every state. |
+| Vita | Selected and hovered navbar labels turn to primary text (`--text`). | Labels stay muted in every state. |
+| Visia | In windows 1760px and wider, the page grows to `1720px` and the gallery grid to four columns, so the header and navbar no longer line up with the other apps at those widths. | `max-width: 1180px`. Accepted for Visia, because an image gallery wastes most of a wide window at 1180px. |
 | Lumia | Header row has a fixed `height: 5.5rem` (and `min-height`). | Header row height is intrinsic. |
 | Lumia | Sign out is a fixed `7rem` wide on desktop instead of stretching to a column. | Header buttons stretch to their column. |
 | Lumia | Navbar item gap is `.35rem`. | `.2rem`. |

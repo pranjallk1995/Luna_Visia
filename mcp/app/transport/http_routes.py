@@ -138,6 +138,15 @@ class VisiaHTTPRoutes:
         async def metadata(request: Request):
             return {"images": visible.list()}
 
+        async def embedded_metadata(request: Request):
+            name = self.name(request)
+            described = await anyio.to_thread.run_sync(
+                lambda: visible.metadata_page(1, 0, 1, names=[name])
+            )
+            if not described["images"]:
+                return JSONResponse({"error": f"Visible image {name!r} was not found."}, status_code=404)
+            return described["images"][0]["embedded"]
+
         async def public_image(request: Request):
             path = visible.public_path(self.name(request))
             return FileResponse(
@@ -174,6 +183,7 @@ class VisiaHTTPRoutes:
         self.route("POST", "/api/images", upload, 201)
         self.route("DELETE", "/api/images/{name}", delete)
         self.route("POST", "/api/images/{name}/rename", rename)
+        self.route("GET", "/api/images/{name}/metadata", embedded_metadata)
         self.route("POST", "/api/images/{name}/metadata", update_metadata)
 
     def _register_downloads(self) -> None:

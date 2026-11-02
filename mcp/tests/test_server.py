@@ -645,6 +645,15 @@ class HTTPRouteTests(ServerTestCase):
             images = client.get("/api/metadata").json()["images"]
         self.assertEqual([image["name"] for image in images], ["one.png"])
 
+    def test_embedded_metadata_route_covers_only_visible_images(self) -> None:
+        self.service.hidden.set_hidden(["two.png"], True)
+        with self.client() as client:
+            visible = client.get("/api/images/one.png/metadata")
+            hidden = client.get("/api/images/two.png/metadata")
+        self.assertEqual(visible.status_code, 200)
+        self.assertEqual(visible.json()["format"], "PNG")
+        self.assertEqual(hidden.status_code, 404)
+
     def test_public_image_route_serves_by_stable_id(self) -> None:
         with self.client() as client:
             response = client.get("/api/public/images/image-1")

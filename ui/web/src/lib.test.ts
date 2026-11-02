@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import type { ImageRecord } from "./api";
-import { displayName, inSection, matching, normalizedTag, pageCount, pageOf, sizeLabel, splitName, storedName } from "./lib";
+import {
+  displayName,
+  inSection,
+  matching,
+  normalizedTag,
+  pageCount,
+  pageOf,
+  readableName,
+  sizeLabel,
+  splitName,
+  storedName,
+  tagSlot,
+  visibleTags,
+} from "./lib";
 
 const image = (name: string, tags: string[] = [], favorite = false): ImageRecord => ({
   name,
@@ -69,6 +82,29 @@ describe("paging", () => {
 describe("normalizedTag", () => {
   it("ignores case and spacing", () => {
     expect(normalizedTag("  Golden   Hour ")).toBe("golden hour");
+  });
+});
+
+describe("readableName", () => {
+  it("drops the prefix, extension, and underscores", () => {
+    expect(readableName(`${"a".repeat(32)}_Butter_Block.png`)).toBe("Butter Block");
+    expect(readableName("Boiled chicken wings_2.png")).toBe("Boiled chicken wings 2");
+    expect(readableName("___.png")).toBe("___");
+  });
+});
+
+describe("visibleTags", () => {
+  it("leaves out only the system's ai info tag", () => {
+    expect(visibleTags(["cat", "AI  Info", "sofa"])).toEqual(["cat", "sofa"]);
+    expect(visibleTags(null)).toEqual([]);
+  });
+});
+
+describe("tagSlot", () => {
+  it("gives one tag one slot, whatever its case or spacing", () => {
+    expect(tagSlot("Golden  Hour")).toBe(tagSlot("golden hour"));
+    expect(tagSlot("cheese")).toBeGreaterThanOrEqual(0);
+    expect(tagSlot("cheese")).toBeLessThan(6);
   });
 });
 

@@ -2,9 +2,11 @@ import { Download, Eye, EyeOff, Heart, MoreVertical, Trash2 } from "lucide-react
 import { memo, useEffect, useRef, useState } from "react";
 
 import { downloadUrl, thumbnailUrl, type ImageRecord, type Section } from "../api";
-import { displayName, sizeLabel } from "../lib";
+import { displayName, readableName, sizeLabel, visibleTags } from "../lib";
 
 export type CardAction = "open" | "favorite" | "delete" | "hide" | "restore";
+
+const TAGS_SHOWN = { grid: 3, list: 8 };
 
 type Props = {
   image: ImageRecord;
@@ -16,7 +18,7 @@ type Props = {
 function CardMenu({ image, section, onAction }: Pick<Props, "image" | "section" | "onAction">) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const name = displayName(image.name);
+  const name = readableName(image.name);
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +44,7 @@ function CardMenu({ image, section, onAction }: Pick<Props, "image" | "section" 
   return (
     <div className="lv-menu" ref={ref}>
       <button
-        className="lv-menu-trigger"
+        className="lv-more"
         type="button"
         aria-label={`Actions for ${name}`}
         aria-expanded={open}
@@ -52,7 +54,12 @@ function CardMenu({ image, section, onAction }: Pick<Props, "image" | "section" 
       </button>
       {open && (
         <div className="lv-menu-items">
-          <a className="lv-icon-button" href={downloadUrl(image, name)} aria-label="Download" title="Download">
+          <a
+            className="lv-icon-button"
+            href={downloadUrl(image, displayName(image.name))}
+            aria-label="Download"
+            title="Download"
+          >
             <Download size={17} />
           </a>
           <button className="lv-icon-button" type="button" aria-label="Delete" title="Delete" onClick={() => act("delete")}>
@@ -75,12 +82,14 @@ function CardMenu({ image, section, onAction }: Pick<Props, "image" | "section" 
 }
 
 function ImageCardBase({ image, section, layout, onAction }: Props) {
-  const name = displayName(image.name);
+  const name = readableName(image.name);
+  const tags = visibleTags(image.tags);
+  const hiddenTags = tags.length - TAGS_SHOWN[layout];
   return (
     <article className={`lv-card lv-card-${layout}`}>
       <div className="lv-thumbnail">
         <button className="lv-thumbnail-open" type="button" aria-label={`Open ${name}`} onClick={() => onAction("open", image)}>
-          <img src={thumbnailUrl(image)} alt="" width={420} height={248} loading="lazy" decoding="async" />
+          <img src={thumbnailUrl(image)} alt="" width={420} height={280} loading="lazy" decoding="async" />
         </button>
         {section !== "hidden" && (
           <button
@@ -95,25 +104,26 @@ function ImageCardBase({ image, section, layout, onAction }: Props) {
         )}
       </div>
       <div className="lv-card-details">
-        <div className="lv-card-title">
-          <span className="lv-card-name" title={name}>
-            {name}
-          </span>
-          <CardMenu image={image} section={section} onAction={onAction} />
-        </div>
+        <p className="lv-card-name" title={name}>
+          {name}
+        </p>
         <div className="lv-card-tags">
-          {(image.tags ?? []).map((tag, index) => (
-            <span className={`lv-tag lv-tag-${index % 6}`} key={tag}>
+          {tags.slice(0, TAGS_SHOWN[layout]).map((tag) => (
+            <span className="lv-tag lv-tag-quiet" key={tag}>
               {tag}
             </span>
           ))}
+          {hiddenTags > 0 && <span className="lv-tag lv-tag-more lv-tag-more-wide">+{hiddenTags}</span>}
+          {/* Phones show one tag in a grid card, so they need their own count. */}
+          {layout === "grid" && tags.length > 1 && (
+            <span className="lv-tag lv-tag-more lv-tag-more-phone">+{tags.length - 1}</span>
+          )}
         </div>
-        <div className="lv-card-facts">
-          <span>{sizeLabel(image.size_bytes)}</span>
-          <span>·</span>
-          <span>
-            {image.width} × {image.height}
-          </span>
+        <div className="lv-card-foot">
+          <p className="lv-card-facts">
+            {image.width} × {image.height} · {sizeLabel(image.size_bytes)}
+          </p>
+          <CardMenu image={image} section={section} onAction={onAction} />
         </div>
       </div>
     </article>

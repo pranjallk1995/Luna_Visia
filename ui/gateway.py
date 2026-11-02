@@ -35,6 +35,7 @@ PROXIED_ROUTES = tuple(
         ("POST", r"/api/images"),
         ("DELETE", rf"/api/images/{NAME}"),
         ("POST", rf"/api/images/{NAME}/rename"),
+        ("GET", rf"/api/images/{NAME}/metadata"),
         ("POST", rf"/api/images/{NAME}/metadata"),
         ("POST", r"/api/favorites"),
         ("POST", r"/api/hidden/(hide|restore|delete)"),

@@ -173,6 +173,11 @@ class ProxyTests(GatewayTestCase):
         self.client.delete("/api/images/b%20b.png")
         self.assertEqual(self.backend_requests[-1].url.raw_path, b"/api/images/b%20b.png")
 
+    def test_embedded_metadata_is_readable_through_the_gateway(self):
+        self.sign_in()
+        self.assertEqual(self.client.get("/api/images/a.png/metadata").status_code, 200)
+        self.assertEqual(self.backend_requests[-1].url.raw_path, b"/api/images/a.png/metadata")
+
     def test_other_backend_routes_are_not_reachable(self):
         self.sign_in()
         for method, path in (
