@@ -14,6 +14,7 @@ import {
   storedName,
   tagSlot,
   visibleTags,
+  pageSlots,
 } from "./lib";
 
 const image = (name: string, tags: string[] = [], favorite = false): ImageRecord => ({
@@ -111,5 +112,29 @@ describe("tagSlot", () => {
 describe("storedName", () => {
   it("adds a prefix displayName removes", () => {
     expect(displayName(storedName("cat.png"))).toBe("cat.png");
+  });
+});
+
+describe("pageSlots", () => {
+  it("shows every page when they fit", () => {
+    expect(pageSlots(0, 1)).toEqual([0]);
+    expect(pageSlots(2, 7)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it("keeps seven slots with gaps around the current page", () => {
+    expect(pageSlots(0, 17)).toEqual([0, 1, 2, 3, 4, null, 16]);
+    expect(pageSlots(3, 17)).toEqual([0, 1, 2, 3, 4, null, 16]);
+    expect(pageSlots(4, 17)).toEqual([0, null, 3, 4, 5, null, 16]);
+    expect(pageSlots(12, 17)).toEqual([0, null, 11, 12, 13, null, 16]);
+    expect(pageSlots(13, 17)).toEqual([0, null, 12, 13, 14, 15, 16]);
+    expect(pageSlots(16, 17)).toEqual([0, null, 12, 13, 14, 15, 16]);
+  });
+
+  it("always includes the first, last, and current page", () => {
+    for (let page = 0; page < 40; page += 1) {
+      const slots = pageSlots(page, 40);
+      expect(slots).toHaveLength(7);
+      for (const wanted of [0, page, 39]) expect(slots).toContain(wanted);
+    }
   });
 });
