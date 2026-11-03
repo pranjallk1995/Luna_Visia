@@ -41,9 +41,10 @@ class ServerTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.downloads_temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name) / "u_owner"
+        self.root.mkdir(parents=True)
         self.config = AppConfig(
-            image_dir=self.root,
+            image_dir=self.root.parent,
             database_url="postgresql://test",
             ollama_url="http://ollama:11434",
             vision_model="test-vision",

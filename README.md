@@ -85,7 +85,7 @@ through natural-language requests.
 - Run MCP/API and the web UI as one local Docker Compose stack, using the PostgreSQL, Ollama, and Adminer services from Luna Sentia.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
-- Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback.
+- Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback. SigLIP 2 image embeddings run on the GPU only; without one, `backfill_metadata` adds them later.
 
 ## Architecture
 
@@ -95,7 +95,8 @@ through natural-language requests.
 
 Luna Visia is a React UI plus a FastMCP service on Luna Sentia's
 `luna_sentia_network`: its data lives in Sentia's PostgreSQL, people sign in
-through Sentia's `auth`, and model calls go to Sentia's Ollama. Orange lines are
+through Sentia's `auth`, and model calls go to Sentia's Ollama. Visia's SigLIP 2 image
+embeddings and Vibia's CLAP music embeddings run inside those apps instead. Orange lines are
 Visia image URLs that other apps use: food images for Vita, room images for
 Lumia, and cover art for Vibia. Grey dashed lines are planned: links into Fiora
 (tax details from Lexia, transaction image and icon URLs from Visia). Luna Unia
@@ -109,7 +110,8 @@ beats of the track Vibia plays, which Lumia's lights follow.
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
 | Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen3-vl:8b-instruct` by default |
-| Database | PostgreSQL 17 in Luna Sentia (`luna-sentia-db`) | Metadata, full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
+| Image embeddings | SigLIP 2 (`google/siglip2-base-patch16-224`) in the MCP container, GPU only | 768-number embeddings for similarity ordering, other apps, and future search; not served by Ollama |
+| Database | PostgreSQL 17 in Luna Sentia (`luna-sentia-db`) | Metadata, SigLIP embeddings (pgvector), full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
 | Storage | Docker volumes | Original images; the database and Ollama models live in Luna Sentia's volumes |
 | Database UI | Adminer in Luna Sentia | Local inspection of every Luna app's database on `luna-sentia-db` |
 | Network | `luna_sentia_network` (external) | Shared private network created by Luna Sentia; services use project-specific aliases |
@@ -121,6 +123,7 @@ React UI (through its gateway) or MCP client
         -> Luna Visia MCP/API
         -> image volume + PostgreSQL metadata
         -> Luna Sentia Ollama (luna-sentia-ollama) when image content changes
+        -> SigLIP 2 in the MCP container (GPU) when image content changes
 ```
 
 The UI reads original images from `image_data` as read-only. All mutations go through the MCP/API service so file and database changes remain coordinated.
@@ -224,7 +227,7 @@ docker compose -f ../Luna_Sentia/docker-compose.yaml exec ollama ollama ps
 nvidia-smi
 ```
 
-If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service in Luna Sentia to use the CPU fallback. Captioning will still work but will be slower.
+If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service in Luna Sentia to use the CPU fallback. Captioning will still work but will be slower. Also remove `gpus: all` from Luna Visia's `mcp` service, or Docker refuses to start it; images are then stored without SigLIP embeddings until a GPU is back and `backfill_metadata` adds them.
 
 ## Vision model
 

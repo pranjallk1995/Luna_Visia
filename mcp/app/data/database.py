@@ -7,6 +7,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.config import AppConfig
+from app.core import tenancy
+from app.data.tenants import TenantSchemas, use_space
 
 EMBEDDING_DIMENSIONS = AppConfig.EMBEDDING_DIMENSIONS
 
@@ -83,14 +85,27 @@ class Database:
 
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
+        self.tenants = TenantSchemas(self.transaction, self.create_tables)
 
     @contextmanager
-    def connect(self) -> Iterator[psycopg.Connection]:
-        """Yield one connection; its transaction commits when the block succeeds."""
+    def transaction(self) -> Iterator[psycopg.Connection]:
+        """Yield a connection to no one's data; its transaction commits when the block succeeds."""
         with psycopg.connect(self.database_url, row_factory=dict_row) as connection:
             yield connection
 
+    @contextmanager
+    def connect(self) -> Iterator[psycopg.Connection]:
+        """Yield one connection to the current person's schema, in one transaction."""
+        user_id = tenancy.current()
+        self.tenants.ensure(user_id)
+        with self.transaction() as connection:
+            use_space(connection, user_id)
+            yield connection
+
     def initialize_schema(self) -> None:
-        """Create or upgrade the idempotent Luna Visia database schema."""
-        with psycopg.connect(self.database_url, autocommit=True) as connection:
-            connection.execute(SCHEMA_SQL)
+        """Give the owner any data from before there were users; schemas come on first use."""
+        self.tenants.adopt_public_tables()
+
+    def create_tables(self, connection: psycopg.Connection) -> None:
+        """Create or upgrade one person's idempotent Luna Visia schema."""
+        connection.execute(SCHEMA_SQL)

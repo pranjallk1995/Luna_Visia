@@ -195,6 +195,12 @@ class ImageRepository(Repository):
             (content_sha256,),
         )
 
+    def user_of_image_id(self, image_id: str) -> str | None:
+        """Who holds this image, for public links, which name no user."""
+        return self.database.tenants.user_with(
+            "SELECT 1 FROM image_metadata WHERE image_id::text = %s", (image_id,)
+        )
+
     def name_for_image_id(self, image_id: str) -> str | None:
         """Resolve an immutable public identifier to its current filename."""
         row = self.fetch_one(

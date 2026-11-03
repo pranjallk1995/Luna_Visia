@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from app.core import tenancy
 from app.core.config import AppConfig
 from app.services.analysis_graph import ImageAnalysisGraph
 from app.services.downloads import DownloadStore, DownloadTicket
@@ -732,13 +733,14 @@ class UploadLinkService:
     def receive(self, token: str, data: bytes, file_name: str | None = None) -> dict[str, Any]:
         """Store the uploaded bytes for a claimed ticket; failed attempts can retry."""
         ticket = self.store.claim(token)
-        try:
-            if ticket.replace:
-                return {"status": "modified", **self.visible.ingest_bytes(ticket.name, data, replace=True)}
-            return self.visible.upload(ticket.name or file_name, data)
-        except BaseException:
-            self.store.release(ticket)
-            raise
+        with tenancy.acting_as(ticket.user):
+            try:
+                if ticket.replace:
+                    return {"status": "modified", **self.visible.ingest_bytes(ticket.name, data, replace=True)}
+                return self.visible.upload(ticket.name or file_name, data)
+            except BaseException:
+                self.store.release(ticket)
+                raise
 
 
 class HiddenImageService(ImageCollectionService):
