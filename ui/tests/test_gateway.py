@@ -9,9 +9,10 @@ from starlette.testclient import TestClient
 
 from config import SSOConfig, UIConfig
 from gateway import UIGateway
+from sso import CURRENT_USER
 
-OWNER = {"email": "owner@example.com", "email_verified": True}
-STRANGER = {"email": "other@example.com", "email_verified": True}
+OWNER = {"user_id": "owner", "email": "owner@example.com", "email_verified": True}
+STRANGER = {"user_id": "stranger", "email": "other@example.com", "email_verified": True}
 TOKEN = "t" * 32
 
 
@@ -19,7 +20,8 @@ class GatewayTestCase(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.image_dir = Path(directory.name)
+        self.image_dir = Path(directory.name) / "u_owner"
+        self.image_dir.mkdir()
         Image.new("RGB", (64, 32), "red").save(self.image_dir / "a.png")
         Image.new("RGB", (16, 16), "blue").save(self.image_dir / "b b.png")
         self.backend_requests: list[httpx.Request] = []
@@ -37,7 +39,7 @@ class GatewayTestCase(unittest.TestCase):
             return httpx.Response(self.backend_status, json={"status": "ok"})
 
         config = UIConfig(
-            image_dir=self.image_dir,
+            image_dir=self.image_dir.parent,
             api_url="http://backend",
             api_token=TOKEN,
             allowed_emails=frozenset({"owner@example.com"}),
@@ -119,6 +121,7 @@ class CollectionTests(GatewayTestCase):
         self.assertEqual(first["tags"], ["x"])
 
     def test_saved_showcase_rank_orders_after_unranked_images(self):
+        CURRENT_USER.set("owner")
         records = self.gateway.files.collection(
             [{"name": "a.png", "showcase_rank": 2}, {"name": "b b.png", "showcase_rank": 1}]
         )
@@ -213,6 +216,37 @@ class SessionCacheTests(GatewayTestCase):
         self.assertEqual(self.client.get("/auth/session").json()["status"], "signed_in")
         self.client.cookies.set(SSOConfig.COOKIE_NAME, "someone-else")
         self.assertEqual(self.client.get("/auth/session").json()["status"], "signed_out")
+
+
+class SeparatePeopleTests(GatewayTestCase):
+    def test_the_backend_is_told_who_and_a_browser_cannot_say_otherwise(self):
+        self.sign_in()
+        self.client.get("/app/images", headers={"X-Luna-User": "stranger"})
+        self.assertEqual(self.backend_requests[-1].headers["X-Luna-User"], "owner")
+
+    def test_files_and_lists_come_from_the_signed_in_persons_folder(self):
+        self.gateway.sso.allowed_emails = frozenset({"*"})
+        other = self.image_dir.parent / "u_stranger"
+        other.mkdir()
+        Image.new("RGB", (8, 8), "green").save(other / "only-theirs.png")
+        self.sign_in()
+        self.assertEqual(self.client.get("/app/files/only-theirs.png").status_code, 404)
+        self.client.cookies.clear()
+        self.sign_in("stranger")
+        self.assertEqual(self.client.get("/app/files/only-theirs.png").status_code, 200)
+        self.assertEqual(self.client.get("/app/files/a.png").status_code, 404)
+        self.assertEqual(self.client.get("/app/images").json()["images"], [])
+        self.assertEqual(self.client.get("/app/thumbnails/a.png").status_code, 404)
+
+    def test_a_session_without_a_user_reaches_nothing(self):
+        self.gateway.sso.sessions.clear()
+        no_id = {"email": "owner@example.com", "email_verified": True}
+        async def nobody(token):
+            return no_id
+        self.gateway.sso.user = nobody
+        self.sign_in()
+        self.assertEqual(self.client.get("/app/images").status_code, 502)
+        self.assertEqual(self.backend_requests, [])
 
 
 if __name__ == "__main__":

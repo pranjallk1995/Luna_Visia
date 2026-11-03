@@ -98,6 +98,9 @@ class FakeImageRepository:
             None,
         )
 
+    def user_of_image_id(self, identifier):
+        return None
+
     def name_for_image_id(self, image_id):
         return next(
             (name for name, row in self.rows.items() if row["image_id"] == image_id), None

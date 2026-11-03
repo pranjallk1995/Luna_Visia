@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
+from app.core import tenancy
+
 
 class ImageStorage:
     """Own the image directory: safe paths and file changes that can roll back.
@@ -14,9 +16,16 @@ class ImageStorage:
     """
 
     def __init__(self, image_dir: Path, allowed_extensions: set[str]) -> None:
-        self.image_dir = image_dir
+        self.root = image_dir
         self.allowed_extensions = allowed_extensions
-        self.image_dir.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def image_dir(self) -> Path:
+        """The current person's own folder in the vault."""
+        folder = self.root / tenancy.space_name()
+        folder.mkdir(exist_ok=True)
+        return folder
 
     def path(self, name: str) -> Path:
         """Resolve a supported plain filename without allowing path escape."""

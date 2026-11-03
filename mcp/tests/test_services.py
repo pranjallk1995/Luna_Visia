@@ -33,10 +33,11 @@ class VisiaServiceTestCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.downloads_temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name) / "u_owner"
+        self.root.mkdir(parents=True)
         self.repository = FakeImageRepository()
         self.config = AppConfig(
-            image_dir=self.root,
+            image_dir=self.root.parent,
             database_url="postgresql://test",
             ollama_url="http://ollama:11434",
             vision_model="test-vision",
@@ -606,3 +607,34 @@ class SelectionTests(VisiaServiceTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeparateVaultTests(unittest.TestCase):
+    """Two people's files never meet, even under the same name."""
+
+    def test_folders_and_upload_links_belong_to_one_person(self) -> None:
+        from app.core import tenancy
+        from app.data.storage import ImageStorage
+        from app.services.uploads import UploadLinkStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            storage = ImageStorage(Path(temp), {".png"})
+            with tenancy.acting_as("one"):
+                storage.path("a.png").write_bytes(b"one")
+                ticket = UploadLinkStore(60).create("b.png", False)
+            with tenancy.acting_as("two"):
+                self.assertFalse(storage.path("a.png").exists())
+                self.assertEqual(storage.image_files(), [])
+            self.assertEqual(ticket.user, "one")
+            self.assertTrue((Path(temp) / "u_one" / "a.png").is_file())
+
+    def test_loose_files_go_to_the_owner_once(self) -> None:
+        from app.data.tenants import adopt_loose_files
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "a.png").write_bytes(b"x")
+            (root / "u_ab12").mkdir()
+            self.assertEqual(adopt_loose_files(root), 1)
+            self.assertTrue((root / "u_owner" / "a.png").is_file())
+            self.assertEqual(adopt_loose_files(root), 0)

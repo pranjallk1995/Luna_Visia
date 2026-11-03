@@ -1,11 +1,13 @@
 """Compose and run the Luna Visia MCP and HTTP server."""
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
 
 from app.transport.branding import ServerBranding
+from app.core import tenancy
 from app.core.config import AppConfig
 from app.data.database import Database
+from app.data.tenants import adopt_loose_files
+from app.transport.luna_mcp import LunaMCP
 from app.transport.http_routes import VisiaHTTPRoutes
 from app.transport.mcp_tools import VisiaMCPTools
 from app.core.models import MetadataRules
@@ -23,20 +25,31 @@ class LunaVisiaApplication:
         self.config = config
         self.database = Database(config.database_url)
         self.database.initialize_schema()
-        self.service = VisiaService.create(
-            config,
-            ImageRepository(self.database),
-            PublicURLRepository(self.database),
-            OllamaVisionAnalyzer(
-                config.ollama_url,
-                config.vision_model,
-                MetadataRules(config.max_tags, config.search_stop_words),
-            ),
-            SiglipEmbedder(),
-        )
+        adopt_loose_files(config.image_dir)
+        with tenancy.acting_as(tenancy.OWNER):
+            self.service = VisiaService.create(
+                config,
+                ImageRepository(self.database),
+                PublicURLRepository(self.database),
+                OllamaVisionAnalyzer(
+                    config.ollama_url,
+                    config.vision_model,
+                    MetadataRules(config.max_tags, config.search_stop_words),
+                ),
+                SiglipEmbedder(),
+            )
+        # Public links are served by this backend, so a new person's start at its address.
+        self.database.tenants.after_create = lambda: self.service.urls.seed(config.mcp_public_url or config.public_base_url)
         self.branding = ServerBranding(config.mcp_public_url)
-        self.mcp = FastMCP(
-            "Luna Visia", host=config.host, port=config.port, icons=self.branding.mcp_icons()
+        self.mcp = LunaMCP(
+            "Luna Visia",
+            public_url=config.mcp_public_url,
+            api_token=config.api_token,
+            companion_token=config.companion_token,
+            open_paths=("/api/public/", "/api/downloads/", "/api/uploads/"),
+            host=config.host,
+            port=config.port,
+            icons=self.branding.mcp_icons(),
         )
         sources = ImageSourceResolver(
             self.service.visible.decoder, config.max_image_bytes, config.max_upload_redirects
