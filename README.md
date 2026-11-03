@@ -28,7 +28,7 @@ restore, and delete images. Image data, metadata, and AI models persist in Docke
 while sign-in-gated hidden images stay separate from normal galleries and searches.
 
 <p align="center">
-  <img src="docs/assets/luna-visia-image-view.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
+  <img src="docs/assets/luna-visia-image-view.png" alt="Luna Visia's full-size image view with the image's description, tags, and details" width="900">
 </p>
 
 An MCP-connected AI assistant can query Luna Visia's filenames, generated captions, and tags,
@@ -51,10 +51,6 @@ Connect Luna Visia's `/mcp` endpoint to the ChatGPT app as a custom MCP server.
 Once connected, you can ask ChatGPT to search the vault, inspect image metadata,
 display previews, download selected images, and manage the visible collection
 through natural-language requests.
-
-<p align="center">
-  <img src="docs/assets/chatgpt-mcp-interaction.png" alt="ChatGPT interacting with Luna Visia through MCP" width="760">
-</p>
 
 ## Current features
 
