@@ -6,7 +6,7 @@ from app.transport.branding import ServerBranding
 from app.core import tenancy
 from app.core.config import AppConfig
 from app.data.database import Database
-from app.data.tenants import adopt_loose_files
+from app.data.tenants import adopt_loose_files, remove_folder
 from app.transport.luna_mcp import LunaMCP
 from app.transport.http_routes import VisiaHTTPRoutes
 from app.transport.mcp_tools import VisiaMCPTools
@@ -43,6 +43,8 @@ class LunaVisiaApplication:
         self.branding = ServerBranding(config.mcp_public_url)
         self.mcp = LunaMCP(
             "Luna Visia",
+            app="visia",
+            remove_user=self.remove_user,
             public_url=config.mcp_public_url,
             api_token=config.api_token,
             companion_token=config.companion_token,
@@ -58,6 +60,13 @@ class LunaVisiaApplication:
         VisiaHTTPRoutes(
             self.mcp, self.service, self.branding, config.api_token, sources, config.companion_token
         )
+
+    def remove_user(self, user_id: str) -> None:
+        """Delete everything this person has in this app."""
+        self.database.tenants.remove(user_id)
+        remove_folder(self.config.image_dir, user_id)
+        self.service.downloads.store.remove_user(user_id)
+
 
     def run(self) -> None:
         """Serve Luna Visia over the streamable HTTP transport."""

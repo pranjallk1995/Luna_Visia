@@ -66,7 +66,7 @@ class UIGateway:
     ) -> None:
         self.config = config
         self.vaults: dict[str, ImageFiles] = {}
-        self.sso = LunaSingleSignOn(config.allowed_emails, config.sso, sso_transport)
+        self.sso = LunaSingleSignOn(config.allowed_emails, config.sso, sso_transport, app="visia")
         self.backend = httpx.AsyncClient(
             event_hooks={"request": [send_user]},
             base_url=config.api_url,
