@@ -16,6 +16,7 @@ services:
       VISION_MODEL: ${VISION_MODEL:-qwen3-vl:8b-instruct}
       LUNAVISIA_PUBLIC_BASE_URL: ${LUNAVISIA_PUBLIC_BASE_URL}
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-http://localhost:18000}
+      UI_PUBLIC_URL: ${UI_PUBLIC_URL:-http://localhost:18501}
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:?Set LUNAVISIA_API_TOKEN to a private random value of at least 32 characters}
       # Lets Luna Vita and Luna Vibia store new images here (the same value in all three).
       LUNAVISIA_COMPANION_TOKEN: ${LUNAVISIA_COMPANION_TOKEN:-}

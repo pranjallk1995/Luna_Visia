@@ -197,6 +197,7 @@ openssl rand -hex 32
 `LUNAVISIA_COMPANION_TOKEN` is optional. When it is set, Luna Vita and Luna Vibia can store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Use one random value, set the same in all three apps' `.env` files. Leave it empty to turn the route off.
 
 `*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
+`UI_PUBLIC_URL` is the address of the web UI, which the `get_ui_link` tool gives out.
 `MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
@@ -314,6 +315,10 @@ Use [Adminer in Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia#databa
 ## MCP tools
 
 Luna Visia exposes these tools to connected MCP clients:
+
+### Web UI
+
+- `get_ui_link` - the link to open this app's web UI, to give the user; they sign in with their Luna account.
 
 ### Browse and retrieve
 
