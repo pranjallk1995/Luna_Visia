@@ -43,7 +43,7 @@ The main gallery provides filename search, pagination, AI-generated captions and
 tags, full-size viewing, downloads, and deletion controls. Persisted Favorites
 provide a focused collection for images you return to often.
 
-Hidden Images uses the same allowlisted Google OAuth identity as the rest of
+Hidden Images uses the same Google sign-in as the rest of
 the UI and supports adding, viewing, downloading, restoring, searching, and
 deleting images separately.
 
@@ -75,7 +75,7 @@ through natural-language requests.
 ### Favorites and hidden images
 
 - Maintain a persisted Favorites collection for visible images.
-- Protect Hidden Images with the allowlisted Google OAuth UI session.
+- Protect Hidden Images with the signed-in UI session.
 - Authenticate the UI's Hidden Images backend requests with a private service credential.
 - View, edit, download, restore, or permanently delete hidden images through authenticated routes.
 - Exclude hidden images from public galleries, searches, previews, URLs, and MCP tools.
@@ -86,6 +86,27 @@ through natural-language requests.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
 - Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback. SigLIP 2 image embeddings run on the GPU only; without one, `backfill_metadata` adds them later.
+
+## Users and separate storage
+
+Each person signs in with Google and has their own space in Luna Visia: the schema `u_<id>` in the `lunavisia` database, and the folder `u_<id>` in the `luna_visia_image_data` volume. It is created the first time they use the app. The owner adds, disables, and deletes people at Luna Sentia's `/admin`, and can hide this app from everyone else there; see [Users and separate storage](https://github.com/pranjallk1995/Luna_Sentia#users-and-separate-storage).
+
+### Connecting an MCP client
+
+Add `https://<your visia MCP host>/mcp` to your client, such as Claude or ChatGPT, as a custom connector using OAuth. The client signs you in with Google and shows an approval page; check the return address, then allow it. Its tools then act only on your data. A request without a valid token gets 401.
+
+### Starter library
+
+Everyone starts with the images the owner has chosen, as their own copy in their own gallery. They can rename or delete a copy without touching anyone else's. Copies take no extra disk space, because the files are hard links on one volume and every change to a stored image replaces its file rather than writing into it. Each copy has its own ID and public link.
+
+- Hidden images and favorites are never included.
+- New uploads are not included unless the owner chooses them, so they stay private.
+- Each image is given once: a copy someone deleted does not come back, and a name they already use keeps their own image.
+- Later changes to the owner's original do not reach existing copies, and taking an image out of the library does not remove copies people already have.
+
+The owner chooses with the `set_starter_images` MCP tool. Everyone gets chosen images straight away, including people who joined earlier.
+
+In the code, `mcp/app/core/tenancy.py` holds who the current request or job acts for, `mcp/app/data/tenants.py` creates and removes each person's schema, and `mcp/app/transport/luna_mcp.py` checks connector tokens and the private token on `/api/` routes. Code that does not say who it acts for raises `NoUserError` rather than reading anyone's data.
 
 ## Architecture
 
@@ -157,7 +178,7 @@ POSTGRES_PASSWORD=replace-with-a-private-database-password
 VISION_MODEL=qwen3-vl:8b-instruct
 LUNAVISIA_PUBLIC_BASE_URL=
 LUNAVISIA_API_TOKEN=replace-with-a-random-value-of-at-least-32-characters
-LUNAVISIA_ALLOWED_EMAILS=you@example.com
+LUNAVISIA_ALLOWED_EMAILS=*
 ```
 
 `LUNAVISIA_API_TOKEN` is a shared secret between the UI and the MCP server, not a key issued by any service. Generate your own random value of at least 32 characters:
@@ -168,7 +189,7 @@ openssl rand -hex 32
 
 `LUNAVISIA_COMPANION_TOKEN` is optional. When it is set, Luna Vita and Luna Vibia can store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Use one random value, set the same in all three apps' `.env` files. Leave it empty to turn the route off.
 
-Separate multiple emails with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
+`*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
@@ -182,8 +203,8 @@ Visia needs no Google client of its own. Set in `.env`:
   Sentia's `.env`), for example `https://auth.lunaapps.fyi`.
 - `LUNA_SSO_INTERNAL_URL`: `http://luna-sentia-auth:8000`, where Visia checks
   sessions over `luna_sentia_network`.
-- `LUNAVISIA_ALLOWED_EMAILS`: the accounts allowed into Visia, checked
-  after Sentia confirms who is signed in.
+- `LUNAVISIA_ALLOWED_EMAILS`: who may use Visia among the people with a Luna account: `*`
+  for everyone, or a comma-separated list. Checked after Sentia confirms who is signed in.
 
 Sentia's auth service must be healthy before Visia can sign anyone in; see
 [Single sign-on](https://github.com/pranjallk1995/Luna_Sentia#single-sign-on) for its setup.
@@ -199,7 +220,7 @@ Open:
 - UI: <http://127.0.0.1:18501>
 - Service health: <http://127.0.0.1:18000/health>
 - Favicon and icons: <http://127.0.0.1:18000/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
-- MCP endpoint: <http://127.0.0.1:18000/mcp>
+- MCP endpoint: <http://127.0.0.1:18000/mcp> (clients sign in; see Connecting an MCP client)
 
 The example keeps these development defaults:
 
@@ -217,7 +238,7 @@ Docker is not started automatically by repository setup or validation.
 
 Luna Sentia pulls the vision model; make sure `VISION_MODEL` is listed in
 Sentia's `SENTIA_MODELS`. Open Luna Visia at
-<http://127.0.0.1:18501>. After signing in with an allowlisted Google account,
+<http://127.0.0.1:18501>. After signing in,
 the Hidden Images tab opens directly without another password or PIN prompt.
 
 Check GPU use while analysis is active:
@@ -262,7 +283,7 @@ Add the following to the Codex `config.toml` in `.codex` directory in root:
 
 ```toml
 [mcp_servers.lunavisia]
-url = "http://127.0.0.1:18000/mcp"
+url = "https://visia-mcp.example.com/mcp"
 enabled = true
 required = false
 startup_timeout_sec = 20
@@ -312,6 +333,7 @@ Luna Visia exposes these tools to connected MCP clients:
 - `list_image_metadata` - bulk metadata for searching and classifying many images with an LLM. It pages newest first like `list_images` (`limit`, default 50; follow `next_offset`) or takes an exact `names` batch, listing missing or hidden names under `unavailable`. `detail="summary"` (up to 100 per call) returns each image's name, caption, tags, favorite flag, size, `updated_at`, and `public_url` plus an `embedded` object with format, dimensions, `ai_generated`, `ai_signals`, generator, camera, lens, capture time, software, and GPS when present. `detail="full"` (up to 20 per call) returns the complete `get_image_metadata` output for each image.
 - `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis. Tags must be lowercase: a tag with capital letters is rejected and nothing is changed.
 - `update_images_metadata` - apply caption and tag changes to up to 100 visible images in one call, for example LLM classification results from `list_image_metadata`. Each entry (`name`, optional `caption`, `add_tags`, `remove_tags`) is applied independently and reported under `updated` or `failed`; a capitalized tag anywhere rejects the whole batch with nothing changed.
+- `set_starter_images` - owner only: choose the images everyone starts with; hidden images and favorites are never included.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
 - `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. `exclude_tags` leaves out images carrying those tags and can be the only filter (`exclude_tags=["ai info"]` finds every image not marked as AI-generated). Tag filters must be lowercase too.
 - `sort_images` - arrange the visible gallery for showcasing: `order="similarity"` saves an order where neighbors look alike, by the cosine similarity of their SigLIP image embeddings, starting from `start` or the newest image. The web gallery, Favorites, and `list_images` follow it. Images added or restored afterwards are slotted in between their most similar neighbors; an occasional full sort tidies the drift. `order="newest"` clears it.
@@ -325,8 +347,9 @@ Images whose embedded metadata says generative AI made them get the `ai info` ta
 
 - `set_public_base_url` - update the optional persisted public base URL and regenerate stored image URLs.
 
-Hidden Images routes are UI-only custom routes protected by the private
-`LUNAVISIA_API_TOKEN`; hidden images are not exposed as MCP tools.
+Hidden Images routes are UI-only. Like every `/api/` route except public, download,
+and upload links, they need the private `LUNAVISIA_API_TOKEN` and name the person in
+`X-Luna-User`. Hidden images are not exposed as MCP tools.
 
 ## Metadata and search
 
