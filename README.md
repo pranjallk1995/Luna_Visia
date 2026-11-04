@@ -7,6 +7,13 @@
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
 ![Status: usable](https://img.shields.io/badge/Status-usable-2EA043)
+
+<p align="center">
+  <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia" width="900"></a>
+</p>
+
+<p align="center"><em>From Google sign-in through Luna Unia to searching and browsing images in Luna Visia. Select it for the sharper video.</em></p>
+
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
 > **Work in progress:** Luna Visia is a local-first and desktop-first image store and search under active development.
@@ -190,6 +197,7 @@ openssl rand -hex 32
 `LUNAVISIA_COMPANION_TOKEN` is optional. When it is set, Luna Vita and Luna Vibia can store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Use one random value, set the same in all three apps' `.env` files. Leave it empty to turn the route off.
 
 `*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
+`UI_PUBLIC_URL` is the address of the web UI, which the `get_ui_link` tool gives out.
 `MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
@@ -305,6 +313,10 @@ Use [Adminer in Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia#databa
 - Database: `lunavisia`
 
 ## MCP tools
+
+### Web UI
+
+- `get_ui_link` - the link to open this app's web UI, to give the user; they sign in with their Luna account.
 
 Luna Visia exposes these tools to connected MCP clients:
 
