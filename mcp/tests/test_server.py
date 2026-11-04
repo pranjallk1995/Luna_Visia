@@ -370,6 +370,46 @@ class MCPToolTests(ServerTestCase):
         listing, image, preview = self.call("search_images", {"query": "cat", "include_preview": True})
         self.assertEqual(len(preview["preview"]["previewed"]), listing["count"])
 
+    def test_semantic_search_ranks_by_embedding_and_skips_hidden(self) -> None:
+        self.call("upload_image", {"name": "scarlet.png", "content_base64": png_payload("red", (30, 20))})
+        self.call("upload_image", {"name": "leaf.png", "content_base64": png_payload("green", (30, 20))})
+        self.repository.rows["scarlet.png"]["caption"] = "no color word here"
+        results = self.call("semantic_search_images", {"query": "red"})
+        names = [item["name"] for item in results["results"]]
+        self.assertLess(names.index("scarlet.png"), names.index("leaf.png"))
+        scores = [item["similarity"] for item in results["results"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        self.assertEqual(results["model"], "fake-siglip")
+        self.repository.rows["scarlet.png"]["hidden"] = True
+        names = [item["name"] for item in self.call("semantic_search_images", {"query": "red"})["results"]]
+        self.assertNotIn("scarlet.png", names)
+
+    def test_semantic_search_pages_and_previews(self) -> None:
+        total = self.call("semantic_search_images", {"query": "red"})["count"]
+        page = self.call("semantic_search_images", {"query": "red", "limit": 1})
+        self.assertEqual((len(page["results"]), page["next_offset"]), (1, 1 if total > 1 else None))
+        listing, image, preview = self.call("semantic_search_images", {"query": "red", "include_preview": True})
+        self.assertEqual(len(preview["preview"]["previewed"]), listing["count"])
+
+    def test_semantic_search_skips_other_models_embeddings(self) -> None:
+        for row in self.repository.rows.values():
+            row["embedding_model"] = "an-older-model"
+        self.assertEqual(self.call("semantic_search_images", {"query": "red"})["count"], 0)
+
+    def test_semantic_search_needs_a_query_and_a_gpu(self) -> None:
+        from mcp.server.fastmcp.exceptions import ToolError
+        from app.integrations.embeddings import EmbeddingUnavailableError
+
+        with self.assertRaisesRegex(ToolError, "Describe"):
+            self.call("semantic_search_images", {"query": "  "})
+
+        def no_gpu(text):
+            raise EmbeddingUnavailableError("Image embeddings need a CUDA GPU.")
+
+        self.embedder.embed_text = no_gpu
+        with self.assertRaisesRegex(ToolError, "CUDA"):
+            self.call("semantic_search_images", {"query": "red"})
+
     def test_fetch_images_zip_returns_download_link_not_blob(self) -> None:
         result = self.call("fetch_images", {"names": ["one.png", "two.png"], "delivery": "zip"})
         self.assertEqual(result["status"], "zip_ready")

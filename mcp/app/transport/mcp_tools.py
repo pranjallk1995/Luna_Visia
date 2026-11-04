@@ -192,6 +192,31 @@ class VisiaMCPTools:
             return await self.with_preview(results, "results", include_preview)
 
         @server.tool()
+        async def semantic_search_images(
+            query: str,
+            limit: int = 30,
+            offset: int = 0,
+            include_preview: bool = False,
+        ):
+            """Find visible images by meaning, comparing what they look like with a description.
+
+            Embeds the query with SigLIP 2 and ranks every embedded image by the
+            cosine similarity of its image embedding, so it finds images whose
+            filename, caption, and tags never use the query's words. Use it for
+            concepts and moods ("italian food", "a quiet rainy evening"); use
+            search_images for exact words and tags.
+            Results are ranked best first with a "similarity" score and no cutoff,
+            so the list always runs past the real matches: read the captions and
+            keep only those that fit. Scores only compare results of one query.
+            Images without an embedding yet are not searched; backfill_metadata
+            adds them. Follow next_offset for more; include_preview=true adds a
+            numbered contact sheet of the first 20 results. To hand the matches
+            over as a file, pass their names to fetch_images with delivery="zip".
+            """
+            results = await offload(search.semantic, query, limit, offset)
+            return await self.with_preview(results, "results", include_preview)
+
+        @server.tool()
         async def get_image_metadata(name: str) -> dict[str, Any]:
             """Return all metadata for one visible image: stored and embedded.
 

@@ -774,10 +774,17 @@ class HiddenImageService(ImageCollectionService):
 class SearchService:
     """Search visible metadata with normalized text and tags."""
 
-    def __init__(self, images: ImageRepository, rules: MetadataRules, limit_max: int) -> None:
+    def __init__(
+        self,
+        images: ImageRepository,
+        rules: MetadataRules,
+        limit_max: int,
+        embedder: SiglipEmbedder | None = None,
+    ) -> None:
         self.images = images
         self.rules = rules
         self.limit_max = limit_max
+        self.embedder = embedder
 
     def search(
         self,
@@ -801,6 +808,30 @@ class SearchService:
         return {
             "query": query,
             "normalized_query": normalized_query,
+            "count": count,
+            "next_offset": next_offset if next_offset < count else None,
+            "results": results,
+        }
+
+    def semantic(self, query: str, limit: int, offset: int) -> dict[str, Any]:
+        """Rank visible images by how close their embeddings are to the query's."""
+        query = query.strip()
+        if not query:
+            raise ValueError("Describe what to look for.")
+        if self.embedder is None:
+            raise ValueError("Semantic search is not available: no embedding model is configured.")
+        limit, offset = min(max(limit, 1), self.limit_max), max(offset, 0)
+        try:
+            embedding = self.embedder.embed_text(query)
+        except EmbeddingUnavailableError as error:
+            raise ValueError(f"Semantic search is not available right now: {error}") from error
+        count, results = self.images.semantic_search(
+            embedding, self.embedder.model_name, limit, offset
+        )
+        next_offset = offset + len(results)
+        return {
+            "query": query,
+            "model": self.embedder.model_name,
             "count": count,
             "next_offset": next_offset if next_offset < count else None,
             "results": results,
@@ -865,7 +896,7 @@ class VisiaService:
         return cls(
             visible=visible,
             hidden=HiddenImageService(storage, images, rules, inspector, showcase),
-            search=SearchService(images, rules, config.search_limit_max),
+            search=SearchService(images, rules, config.search_limit_max, embedder),
             indexer=indexer,
             urls=urls,
             downloads=ImageDownloadService(

@@ -315,6 +315,35 @@ class ImageRepository(Repository):
         ]
         return count, results
 
+    def semantic_search(
+        self, embedding: list[float], model: str, limit: int, offset: int
+    ) -> tuple[int, list[Row]]:
+        """Visible images closest to an embedding, comparing every one by cosine similarity.
+
+        A personal gallery is small enough to score exactly, so a long result
+        list is not cut short by the HNSW index's search width.
+        """
+        rows = self.fetch_all(
+            """SELECT name, caption, tags, favorite, updated_at, public_url,
+                      1 - (embedding <=> %s::vector) AS similarity,
+                      count(*) OVER() AS total_count
+               FROM image_metadata
+               WHERE hidden = false AND embedding IS NOT NULL AND embedding_model = %s
+               ORDER BY similarity DESC, name LIMIT %s OFFSET %s""",
+            (vector_literal(embedding), model, limit, offset),
+        )
+        count = rows[0]["total_count"] if rows else 0
+        return count, [
+            {
+                **{
+                    key: row[key]
+                    for key in ("name", "caption", "tags", "favorite", "updated_at", "public_url")
+                },
+                "similarity": round(row["similarity"], 4),
+            }
+            for row in rows
+        ]
+
 
 class PublicURLRepository(Repository):
     """The mutable public origin and every image URL derived from it."""

@@ -155,6 +155,27 @@ class FakeImageRepository:
         ]
         return len(matches), matches[offset : offset + limit]
 
+    def semantic_search(self, embedding, model, limit, offset):
+        scored = sorted(
+            (
+                (sum(a * b for a, b in zip(embedding, row["embedding"])), row)
+                for row in self.rows.values()
+                if not row["hidden"] and row.get("embedding") and row.get("embedding_model") == model
+            ),
+            key=lambda item: (-item[0], item[1]["name"]),
+        )
+        results = [
+            {
+                **{
+                    key: row[key]
+                    for key in ("name", "caption", "tags", "favorite", "updated_at", "public_url")
+                },
+                "similarity": round(score, 4),
+            }
+            for score, row in scored
+        ]
+        return len(results), results[offset : offset + limit]
+
 
 class FakePublicURLRepository:
     """Provide an in-memory PublicURLRepository bound to the image rows."""
@@ -221,6 +242,10 @@ class FakeEmbedder:
         with Image.open(BytesIO(data)) as image:
             red, green, blue = image.convert("RGB").resize((1, 1)).getpixel((0, 0))
         return [red / 255 + 0.01, green / 255 + 0.01, blue / 255 + 0.01]
+
+    def embed_text(self, text):
+        """A color's name means that color, whatever the image's caption says."""
+        return {"red": [1.0, 0.0, 0.0], "green": [0.0, 1.0, 0.0], "blue": [0.0, 0.0, 1.0]}[text]
 
 
 class FakeAnalyzer:
