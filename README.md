@@ -9,10 +9,10 @@
 ![Status: usable](https://img.shields.io/badge/Status-usable-2EA043)
 
 <p align="center">
-  <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia" width="900"></a>
+  <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images through its MCP tools" width="900"></a>
 </p>
 
-<p align="center"><em>From Google sign-in through Luna Unia to searching and browsing images in Luna Visia. Select it for the sharper video.</em></p>
+<p align="center"><em>From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images through its MCP tools. Select it for the sharper video.</em></p>
 
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
