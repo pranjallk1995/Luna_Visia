@@ -6,7 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
-![Status: usable](https://img.shields.io/badge/Status-usable-2EA043)
+![Status: v1.0](https://img.shields.io/badge/Status-v1.0-2EA043)
 
 <p align="center">
   <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images, and to search by meaning with embeddings and hand back a ZIP, through its MCP tools" width="900"></a>
@@ -16,7 +16,7 @@
 
 ## Generate, Manipulate, Search and Store images of your choice using LLMs
 
-> **Work in progress:** Luna Visia is a local-first and desktop-first image store and search under active development.
+> Luna Visia is a local-first and desktop-first image store and search.
 
 Luna Visia is an AI-powered, private image library that runs locally. A local
 Ollama vision model, served by [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia), analyzes every upload automatically, creates a concise caption and
