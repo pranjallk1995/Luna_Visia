@@ -15,6 +15,7 @@ from app.integrations.remote import ImageSourceResolver
 from app.data.repositories import ImageRepository, PublicURLRepository
 from app.integrations.embeddings import SiglipEmbedder
 from app.services.application import VisiaService
+from app.services.starter import StarterLibrary
 from app.integrations.vision import OllamaVisionAnalyzer
 
 
@@ -38,8 +39,10 @@ class LunaVisiaApplication:
                 ),
                 SiglipEmbedder(),
             )
-        # Public links are served by this backend, so a new person's start at its address.
-        self.database.tenants.after_create = lambda: self.service.urls.seed(config.mcp_public_url or config.public_base_url)
+        self.service.starter = StarterLibrary(self.database, config.image_dir)
+        self.database.tenants.after_create = self.prepare_person
+        # Anyone who joined earlier gets images chosen since.
+        self.service.starter.deliver_to_everyone()
         self.branding = ServerBranding(config.mcp_public_url)
         self.mcp = LunaMCP(
             "Luna Visia",
@@ -60,6 +63,12 @@ class LunaVisiaApplication:
         VisiaHTTPRoutes(
             self.mcp, self.service, self.branding, config.api_token, sources, config.companion_token
         )
+
+    def prepare_person(self) -> None:
+        """Give someone what they start with, the first time this process needs them."""
+        # Public links are served by this backend, so a new person's start at its address.
+        self.service.urls.seed(self.config.mcp_public_url or self.config.public_base_url)
+        self.service.starter.deliver(tenancy.current())
 
     def remove_user(self, user_id: str) -> None:
         """Delete everything this person has in this app."""

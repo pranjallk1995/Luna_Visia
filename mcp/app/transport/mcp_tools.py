@@ -462,6 +462,17 @@ class VisiaMCPTools:
             return visible.set_favorite(names, favorite)
 
         @server.tool()
+        async def set_starter_images(names: list[str] | None = None, included: bool = True) -> dict[str, Any]:
+            """Owner only: choose the images everyone starts with in their own gallery.
+
+            Omit names for every visible image that is not a favorite, or list exact
+            filenames. Hidden images and favorites are never included. Everyone gets
+            their own copy, including people who joined earlier. Setting included to
+            false stops further copies; copies people already have stay theirs.
+            """
+            return await offload(self.service.starter.choose, names, included)
+
+        @server.tool()
         def remove_image(name: str) -> dict[str, str]:
             """Remove a non-hidden image and its persisted metadata consistently."""
             return visible.remove(name)

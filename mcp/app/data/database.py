@@ -63,6 +63,13 @@ CREATE INDEX IF NOT EXISTS image_metadata_hidden_idx
     ON image_metadata (hidden, updated_at DESC);
 CREATE INDEX IF NOT EXISTS image_metadata_favorite_idx
     ON image_metadata (favorite, hidden, updated_at DESC);
+-- The starter library: on the owner's images, which everyone is given; on everyone
+-- else's, which of those they have already been given.
+ALTER TABLE image_metadata ADD COLUMN IF NOT EXISTS starter boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS starter_received (
+    source_image_id uuid PRIMARY KEY,
+    received_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS vault_security (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
     password_salt bytea NOT NULL,

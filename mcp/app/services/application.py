@@ -831,6 +831,8 @@ class VisiaService:
         self.uploads = uploads
         self.previews = previews
         self.showcase = showcase
+        # The owner's images that everyone starts with; set once the database is ready.
+        self.starter = None
 
     @classmethod
     def create(
