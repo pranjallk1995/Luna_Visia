@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { inBatches, type BatchFailure } from "./lib";
+
 export type Section = "view" | "favorites" | "hidden";
 
 export type ImageRecord = {
@@ -18,6 +20,7 @@ export type ImageRecord = {
 
 export type Settings = {
   images_per_page: number;
+  batch_size: number;
   max_tags: number;
   name_max_chars: number;
   caption_max_chars: number;
@@ -34,6 +37,8 @@ export type MetadataChange = {
   add_tags?: string[];
   remove_tags?: string[];
 };
+
+export type NamedMetadataChange = MetadataChange & { name: string };
 
 export class ApiError extends Error {
   constructor(
@@ -120,7 +125,7 @@ export function useImages(section: Section) {
 }
 
 /** Every change to one collection: applied on screen first, undone if the server refuses it. */
-export function useImageActions(section: Section) {
+export function useImageActions(section: Section, batchSize: number) {
   const collection = collectionOf(section);
   const client = useQueryClient();
   const key = ["images", collection];
@@ -128,8 +133,8 @@ export function useImageActions(section: Section) {
 
   const refresh = () => client.invalidateQueries({ queryKey: ["images"] });
 
-  const change = <V,>(
-    run: (variables: V) => Promise<unknown>,
+  const change = <V, R>(
+    run: (variables: V) => Promise<R>,
     apply: (images: ImageRecord[], variables: V) => ImageRecord[],
   ) => ({
     mutationFn: run,
@@ -146,6 +151,52 @@ export function useImageActions(section: Section) {
   });
 
   const without = (images: ImageRecord[], name: string) => images.filter((image) => image.name !== name);
+  const withoutAll = (images: ImageRecord[], names: string[]) => {
+    const leaving = new Set(names);
+    return images.filter((image) => !leaving.has(image.name));
+  };
+
+  const sameName = (name: string) => name;
+
+  /** Post names a batch at a time to a route that changes all of a batch or none of it. */
+  const postNames = (path: string, names: string[], extra?: object) =>
+    inBatches(names, batchSize, sameName, async (batch) => {
+      await post(path, { names: batch, ...extra });
+      return [];
+    });
+
+  const deleteNames = (names: string[]) =>
+    inBatches(names, batchSize, sameName, async (batch) => {
+      const path = collection === "hidden" ? "/api/hidden/delete" : "/api/images/delete";
+      return (await post<{ failed: BatchFailure[] }>(path, { names: batch })).failed;
+    });
+
+  const setFavorites = useMutation(
+    change(
+      ({ names, favorite }: { names: string[]; favorite: boolean }) => postNames("/api/favorites", names, { favorite }),
+      (images, { names, favorite }) => {
+        const changing = new Set(names);
+        return images.map((image) => (changing.has(image.name) ? { ...image, favorite } : image));
+      },
+    ),
+  );
+
+  const removeMany = useMutation(change(deleteNames, withoutAll));
+
+  const hideMany = useMutation(change((names: string[]) => postNames("/api/hidden/hide", names), withoutAll));
+
+  const restoreMany = useMutation(change((names: string[]) => postNames("/api/hidden/restore", names), withoutAll));
+
+  const updateMetadataMany = useMutation({
+    mutationFn: (changes: NamedMetadataChange[]) =>
+      inBatches(
+        changes,
+        batchSize,
+        (item) => item.name,
+        async (batch) => (await post<{ failed: BatchFailure[] }>(`${hiddenPrefix}/metadata`, { changes: batch })).failed,
+      ),
+    onSettled: refresh,
+  });
 
   const setFavorite = useMutation(
     change(
@@ -158,10 +209,8 @@ export function useImageActions(section: Section) {
 
   const remove = useMutation(
     change(
-      (name: string) =>
-        collection === "hidden"
-          ? post("/api/hidden/delete", { names: [name] })
-          : request(`/api/images/${segment(name)}`, { method: "DELETE" }),
+      (name: string): Promise<unknown> =>
+        collection === "hidden" ? deleteNames([name]) : request(`/api/images/${segment(name)}`, { method: "DELETE" }),
       without,
     ),
   );
@@ -193,7 +242,19 @@ export function useImageActions(section: Section) {
     },
   });
 
-  return { setFavorite, remove, hide, restore, rename, updateMetadata };
+  return {
+    setFavorite,
+    remove,
+    hide,
+    restore,
+    rename,
+    updateMetadata,
+    setFavorites,
+    removeMany,
+    hideMany,
+    restoreMany,
+    updateMetadataMany,
+  };
 }
 
 export type ImageActions = ReturnType<typeof useImageActions>;

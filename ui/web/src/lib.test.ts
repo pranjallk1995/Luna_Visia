@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import type { ImageRecord } from "./api";
 import {
+  bulkChanges,
+  clickedSelection,
   displayName,
+  inBatches,
   inSection,
   matching,
   normalizedTag,
+  outcomeMessage,
   pageCount,
   pageOf,
+  parsedTags,
   readableName,
+  selectionLabel,
   sizeLabel,
   splitName,
   storedName,
+  tagCounts,
   tagSlot,
   visibleTags,
   pageSlots,
@@ -136,5 +143,139 @@ describe("pageSlots", () => {
       expect(slots).toHaveLength(7);
       for (const wanted of [0, page, 39]) expect(slots).toContain(wanted);
     }
+  });
+});
+
+describe("clickedSelection", () => {
+  const order = ["a", "b", "c", "d", "e"];
+
+  it("toggles one image on a plain click", () => {
+    expect([...clickedSelection(new Set(), order, "b", null)]).toEqual(["b"]);
+    expect([...clickedSelection(new Set(["b"]), order, "b", null)]).toEqual([]);
+  });
+
+  it("adds the range from the anchor in either direction, keeping what was selected", () => {
+    expect([...clickedSelection(new Set(["a"]), order, "d", "b")].sort()).toEqual(["a", "b", "c", "d"]);
+    expect([...clickedSelection(new Set(), order, "b", "d")].sort()).toEqual(["b", "c", "d"]);
+  });
+
+  it("falls back to a toggle when the anchor is no longer in the search", () => {
+    expect([...clickedSelection(new Set(), order, "b", "gone")]).toEqual(["b"]);
+  });
+});
+
+describe("inBatches", () => {
+  const send = (log: string[][]) => async (batch: string[]) => {
+    log.push(batch);
+    return [];
+  };
+
+  it("splits items into batches of the given size", async () => {
+    const log: string[][] = [];
+    const outcome = await inBatches(["a", "b", "c"], 2, (name) => name, send(log));
+    expect(log).toEqual([["a", "b"], ["c"]]);
+    expect(outcome).toEqual({ done: 3, failed: [] });
+  });
+
+  it("collects each image's failure and keeps going", async () => {
+    const outcome = await inBatches(["a", "b", "c"], 1, (name) => name, async ([name]) =>
+      name === "b" ? [{ name, error: "too many tags" }] : [],
+    );
+    expect(outcome).toEqual({ done: 2, failed: [{ name: "b", error: "too many tags" }] });
+  });
+
+  it("stops at a refused batch and counts the rest as failed", async () => {
+    const log: string[][] = [];
+    const outcome = await inBatches(["a", "b", "c"], 1, (name) => name, async (batch) => {
+      log.push(batch);
+      if (batch[0] === "b") throw new Error("backend down");
+      return [];
+    });
+    expect(log).toEqual([["a"], ["b"]]);
+    expect(outcome.done).toBe(1);
+    expect(outcome.failed).toEqual([
+      { name: "b", error: "backend down" },
+      { name: "c", error: "backend down" },
+    ]);
+  });
+
+  it("rejects with the reason when nothing succeeded", async () => {
+    await expect(
+      inBatches(["a"], 1, (name) => name, async ([name]) => [{ name, error: "not allowed" }]),
+    ).rejects.toThrow("not allowed");
+  });
+
+  it("does nothing for nothing", async () => {
+    await expect(inBatches([], 2, (name: string) => name, send([]))).resolves.toEqual({ done: 0, failed: [] });
+  });
+});
+
+describe("selection messages", () => {
+  it("names the first few images and counts the rest", () => {
+    expect(selectionLabel(["a_cat.png"])).toBe("1 image: a cat");
+    expect(selectionLabel(["a.png", "b.png", "c.png", "d.png", "e.png"])).toBe("5 images: a, b, c and 2 more");
+  });
+
+  it("gives the outcome, with the first reason for any failure", () => {
+    expect(outcomeMessage({ done: 2, failed: [] }, "deleted")).toBe("2 images deleted.");
+    expect(outcomeMessage({ done: 1, failed: [{ name: "b", error: "Not found." }] }, "hidden")).toBe(
+      "1 image hidden. 1 image stayed selected: Not found.",
+    );
+  });
+});
+
+describe("tag helpers", () => {
+  it("counts visible tags, most common first", () => {
+    const images = [image("a", ["cat", "ai info"]), image("b", ["cat", "dog"])];
+    expect(tagCounts(images)).toEqual([
+      { tag: "cat", count: 2 },
+      { tag: "dog", count: 1 },
+    ]);
+  });
+
+  it("parses a comma-separated list into normalized, unique tags", () => {
+    expect(parsedTags(" Holiday , big   DOG,,holiday")).toEqual(["holiday", "big dog"]);
+  });
+});
+
+describe("bulkChanges", () => {
+  const keep = { mode: "keep" } as const;
+  const captioned = (name: string, caption: string, tags: string[] = []) => ({ ...image(name, tags), caption });
+
+  it("adds a tag only where it is missing and leaves out unchanged images", () => {
+    const images = [image("a", ["cat"]), image("b", ["dog"])];
+    expect(bulkChanges(images, { addTags: ["cat"], removeTags: [], caption: keep })).toEqual([
+      { name: "b", add_tags: ["cat"] },
+    ]);
+  });
+
+  it("removes a tag only where it is present", () => {
+    const images = [image("a", ["cat"]), image("b", ["dog"])];
+    expect(bulkChanges(images, { addTags: [], removeTags: ["cat"], caption: keep })).toEqual([
+      { name: "a", remove_tags: ["cat"] },
+    ]);
+  });
+
+  it("lets removal win when a tag is both added and removed", () => {
+    expect(bulkChanges([image("a", ["cat"])], { addTags: ["cat"], removeTags: ["cat"], caption: keep })).toEqual([
+      { name: "a", remove_tags: ["cat"] },
+    ]);
+  });
+
+  it("finds text in any capitalization and treats both sides literally", () => {
+    const images = [captioned("a", "A cost of $5 (paris) in PARIS"), captioned("b", "Berlin")];
+    const change = (find: string, replacement: string) =>
+      bulkChanges(images, { addTags: [], removeTags: [], caption: { mode: "replace", find, replacement } });
+    expect(change("paris", "$1")).toEqual([{ name: "a", caption: "A cost of $5 ($1) in $1" }]);
+    expect(change("$5 (", "ten ")).toEqual([{ name: "a", caption: "A cost of ten paris) in PARIS" }]);
+    expect(change("", "x")).toEqual([]);
+  });
+
+  it("sets one description, skipping blank text and images that already have it", () => {
+    const images = [captioned("a", "Old text"), captioned("b", "New text")];
+    const change = (text: string) =>
+      bulkChanges(images, { addTags: [], removeTags: [], caption: { mode: "set", text } });
+    expect(change("  New text ")).toEqual([{ name: "a", caption: "New text" }]);
+    expect(change("   ")).toEqual([]);
   });
 });

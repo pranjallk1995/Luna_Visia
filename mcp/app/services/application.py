@@ -275,6 +275,45 @@ class ImageCollectionService:
             self.images.delete(name)
         return {"status": "deleted", "removed_name": name}
 
+    def _apply_batch(
+        self, items: list[tuple[str, Callable[[], Row]]], result_key: str
+    ) -> dict[str, Any]:
+        """Apply each change on its own, reporting failures instead of stopping."""
+        if not items:
+            raise ValueError("Provide at least one image change.")
+        if len(items) > AppConfig.BATCH_MAX_IMAGES:
+            raise ValueError(f"Change at most {AppConfig.BATCH_MAX_IMAGES} images at a time.")
+        succeeded, failed = [], []
+        for name, apply in items:
+            try:
+                succeeded.append(apply())
+            except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as error:
+                failed.append({"name": name, "error": str(error)})
+        return {
+            f"{result_key}_count": len(succeeded),
+            "failed_count": len(failed),
+            result_key: succeeded,
+            "failed": failed,
+        }
+
+    def update_metadata_many(self, changes: list[tuple[str, MetadataChange]]) -> dict[str, Any]:
+        """Edit captions and tags of many images in this collection in one call."""
+        return self._apply_batch(
+            [
+                (name, lambda name=name, change=change: summarize(self.update_metadata(name, change)))
+                for name, change in changes
+            ],
+            "updated",
+        )
+
+    def remove_many(self, names: list[str]) -> dict[str, Any]:
+        """Delete many images in this collection, reporting each failure instead of stopping."""
+        clean_names = unique_names(names, "Provide at least one image name.")
+        return self._apply_batch(
+            [(name, lambda name=name: self.remove(name)["removed_name"]) for name in clean_names],
+            "removed",
+        )
+
 
 class VisibleImageService(ImageCollectionService):
     """The public library: ingest, rename, favorites, and public delivery."""
@@ -417,37 +456,6 @@ class VisibleImageService(ImageCollectionService):
             result["unavailable"] = unavailable
         return result
 
-    def _apply_batch(
-        self, items: list[tuple[str, Callable[[], Row]]], result_key: str
-    ) -> dict[str, Any]:
-        """Apply each change on its own, reporting failures instead of stopping."""
-        if not items:
-            raise ValueError("Provide at least one image change.")
-        if len(items) > AppConfig.BATCH_MAX_IMAGES:
-            raise ValueError(f"Change at most {AppConfig.BATCH_MAX_IMAGES} images at a time.")
-        succeeded, failed = [], []
-        for name, apply in items:
-            try:
-                succeeded.append(apply())
-            except (FileNotFoundError, FileExistsError, PermissionError, ValueError) as error:
-                failed.append({"name": name, "error": str(error)})
-        return {
-            f"{result_key}_count": len(succeeded),
-            "failed_count": len(failed),
-            result_key: succeeded,
-            "failed": failed,
-        }
-
-    def update_metadata_many(self, changes: list[tuple[str, MetadataChange]]) -> dict[str, Any]:
-        """Edit captions and tags of many visible images in one call."""
-        return self._apply_batch(
-            [
-                (name, lambda name=name, change=change: summarize(self.update_metadata(name, change)))
-                for name, change in changes
-            ],
-            "updated",
-        )
-
     def rename_many(self, renames: list[tuple[str, str]]) -> dict[str, Any]:
         """Rename many visible images in order, so chained renames work."""
 
@@ -461,14 +469,6 @@ class VisibleImageService(ImageCollectionService):
                 for name, new_name in renames
             ],
             "renamed",
-        )
-
-    def remove_many(self, names: list[str]) -> dict[str, Any]:
-        """Delete many visible images, reporting each failure instead of stopping."""
-        clean_names = unique_names(names, "Provide at least one image name.")
-        return self._apply_batch(
-            [(name, lambda name=name: self.remove(name)["removed_name"]) for name in clean_names],
-            "removed",
         )
 
     def favorites(self) -> list[Row]:
@@ -763,12 +763,6 @@ class HiddenImageService(ImageCollectionService):
             "names": changed,
             "count": len(changed),
         }
-
-    def remove_many(self, names: list[str]) -> dict[str, Any]:
-        clean_names = unique_names(names, "Select at least one hidden image.")
-        for name in clean_names:
-            self.remove(name)
-        return {"status": "deleted", "count": len(clean_names)}
 
 
 class SearchService:

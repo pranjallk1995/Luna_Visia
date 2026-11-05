@@ -42,11 +42,15 @@ class UIConfig:
     NAME_MAX_CHARS: ClassVar[int] = 200
     CAPTION_MAX_CHARS: ClassVar[int] = 500
     IMAGES_PER_PAGE: ClassVar[int] = 12
+    # A bulk action is sent in batches of this many images; the backend accepts up to 100.
+    BATCH_SIZE: ClassVar[int] = 100
     UPLOAD_TYPES: ClassVar[tuple[str, ...]] = ("png", "jpg", "jpeg", "gif", "webp")
     IMAGE_EXTENSIONS: ClassVar[frozenset[str]] = frozenset({".gif", ".jpeg", ".jpg", ".png", ".webp"})
     API_TIMEOUT_SECONDS: ClassVar[float] = 30.0
     # Uploads wait for the backend's vision model to caption and tag the image.
     UPLOAD_TIMEOUT_SECONDS: ClassVar[float] = 360.0
+    # A batch reads up to BATCH_SIZE image files and updates each one's record.
+    BATCH_TIMEOUT_SECONDS: ClassVar[float] = 120.0
     # A 50 MiB image grows by a third as base64, plus its JSON wrapper.
     MAX_REQUEST_BYTES: ClassVar[int] = 70 * 1024 * 1024
     # Twice the 420 x 280 card, so thumbnails stay sharp on high-density screens.

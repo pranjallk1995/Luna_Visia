@@ -421,10 +421,45 @@ class HiddenAndFavoriteTests(VisiaServiceTestCase):
         self.assertFalse((self.root / "cat.png").exists())
         self.assertNotIn("cat.png", self.repository.rows)
 
-    def test_hidden_remove_rejects_visible_images(self):
+    def test_hidden_remove_refuses_visible_images(self):
         self.visible.ingest("cat.png", png_payload())
-        with self.assertRaisesRegex(PermissionError, "Only hidden images"):
-            self.hidden.remove_many(["cat.png"])
+        result = self.hidden.remove_many(["cat.png"])
+        self.assertEqual(result["removed_count"], 0)
+        self.assertIn("Only hidden images", result["failed"][0]["error"])
+        self.assertTrue((self.root / "cat.png").is_file())
+
+    def test_hidden_batch_delete_reports_each_failure_and_keeps_going(self):
+        self.visible.ingest("cat.png", png_payload())
+        self.visible.ingest("dog.png", png_payload("blue"))
+        self.visible.ingest("shown.png", png_payload("green"))
+        self.hidden.set_hidden(["cat.png", "dog.png"], True)
+        result = self.hidden.remove_many(["cat.png", "shown.png", "missing.png", "dog.png"])
+        self.assertEqual(result["removed"], ["cat.png", "dog.png"])
+        self.assertEqual([item["name"] for item in result["failed"]], ["shown.png", "missing.png"])
+        self.assertTrue((self.root / "shown.png").is_file())
+
+    def test_hidden_batch_metadata_stays_inside_its_collection(self):
+        self.visible.ingest("cat.png", png_payload())
+        self.visible.ingest("shown.png", png_payload("green"))
+        self.hidden.set_hidden(["cat.png"], True)
+        before = self.repository.rows["shown.png"]["tags"]
+        result = self.hidden.update_metadata_many(
+            [
+                ("cat.png", MetadataChange(add_tags=["private"])),
+                ("shown.png", MetadataChange(add_tags=["private"])),
+            ]
+        )
+        self.assertEqual([item["name"] for item in result["updated"]], ["cat.png"])
+        self.assertIn("private", result["updated"][0]["tags"])
+        self.assertEqual([item["name"] for item in result["failed"]], ["shown.png"])
+        self.assertEqual(self.repository.rows["shown.png"]["tags"], before)
+
+    def test_visible_batch_cannot_reach_hidden_images(self):
+        self.visible.ingest("cat.png", png_payload())
+        self.hidden.set_hidden(["cat.png"], True)
+        removed = self.visible.remove_many(["cat.png"])
+        updated = self.visible.update_metadata_many([("cat.png", MetadataChange(add_tags=["x"]))])
+        self.assertEqual((removed["removed_count"], updated["updated_count"]), (0, 0))
         self.assertTrue((self.root / "cat.png").is_file())
 
     def test_hidden_images_are_excluded_and_protected(self):

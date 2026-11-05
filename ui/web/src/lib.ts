@@ -1,6 +1,6 @@
 /** Pure helpers for galleries: names, sizes, search, and paging. */
 
-import type { ImageRecord, Section } from "./api";
+import type { ImageRecord, NamedMetadataChange, Section } from "./api";
 
 /** Remove the internal upload prefix from a user-facing filename. */
 export function displayName(storedName: string): string {
@@ -75,6 +75,122 @@ export function pageSlots(page: number, count: number): (number | null)[] {
 /** The server's reason for a failure, or a fallback when there is none. */
 export const messageOf = (failure: unknown, fallback: string): string =>
   (failure instanceof Error && failure.message) || fallback;
+
+/**
+ * The selection after clicking one image: a plain click toggles it, and a shift-click
+ * from `anchor` adds everything between the two, in the order on screen.
+ */
+export function clickedSelection(
+  selection: ReadonlySet<string>,
+  order: readonly string[],
+  name: string,
+  anchor: string | null,
+): Set<string> {
+  const next = new Set(selection);
+  const from = anchor === null ? -1 : order.indexOf(anchor);
+  const to = order.indexOf(name);
+  if (from < 0 || to < 0) {
+    if (!next.delete(name)) next.add(name);
+    return next;
+  }
+  order.slice(Math.min(from, to), Math.max(from, to) + 1).forEach((item) => next.add(item));
+  return next;
+}
+
+export type BatchFailure = { name: string; error: string };
+export type BatchOutcome = { done: number; failed: BatchFailure[] };
+
+/**
+ * Send items a batch at a time, collecting what each image could not do. A refused batch
+ * ends the run, because the rest would fail the same way. Rejects only when nothing at all
+ * succeeded, so a caller can stay open with the reason.
+ */
+export async function inBatches<T>(
+  items: readonly T[],
+  size: number,
+  nameOf: (item: T) => string,
+  send: (batch: T[]) => Promise<BatchFailure[]>,
+): Promise<BatchOutcome> {
+  const failed: BatchFailure[] = [];
+  for (let start = 0; start < items.length; start += size) {
+    try {
+      failed.push(...(await send(items.slice(start, start + size))));
+    } catch (failure) {
+      const error = messageOf(failure, "The request failed. Please try again.");
+      failed.push(...items.slice(start).map((item) => ({ name: nameOf(item), error })));
+      break;
+    }
+  }
+  if (failed.length && failed.length === items.length) throw new Error(failed[0].error);
+  return { done: items.length - failed.length, failed };
+}
+
+export const imageCount = (count: number) => `${count} ${count === 1 ? "image" : "images"}`;
+
+/** Names a selection before it is changed for good: its size and the first few images. */
+export function selectionLabel(names: readonly string[], shown = 3): string {
+  const readable = names.slice(0, shown).map(readableName).join(", ");
+  const rest = names.length - shown;
+  return `${imageCount(names.length)}: ${readable}${rest > 0 ? ` and ${rest} more` : ""}`;
+}
+
+/** The toast after a bulk action, such as "9 images deleted." with any failure's reason. */
+export function outcomeMessage({ done, failed }: BatchOutcome, action: string): string {
+  const summary = `${imageCount(done)} ${action}.`;
+  if (!failed.length) return summary;
+  return `${summary} ${imageCount(failed.length)} stayed selected: ${failed[0].error}`;
+}
+
+/** Every tag on these images with how many carry it, most common first. */
+export function tagCounts(images: readonly ImageRecord[]): { tag: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const image of images) {
+    for (const tag of visibleTags(image.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  return Array.from(counts, ([tag, count]) => ({ tag, count })).sort(
+    (a, b) => b.count - a.count || a.tag.localeCompare(b.tag),
+  );
+}
+
+export const parsedTags = (text: string) =>
+  Array.from(new Set(text.split(",").map(normalizedTag).filter(Boolean)));
+
+export type CaptionEdit =
+  | { mode: "keep" }
+  | { mode: "set"; text: string }
+  | { mode: "replace"; find: string; replacement: string };
+
+export type BulkEdit = { addTags: string[]; removeTags: string[]; caption: CaptionEdit };
+
+function editedCaption(current: string, edit: CaptionEdit): string {
+  if (edit.mode === "set") return edit.text.trim() || current;
+  if (edit.mode === "replace" && edit.find) {
+    const literal = edit.find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // A function, so "$1" in the replacement stays plain text.
+    return current.replace(new RegExp(literal, "gi"), () => edit.replacement);
+  }
+  return current;
+}
+
+/** What one bulk edit changes on each image, leaving out images it would not change at all. */
+export function bulkChanges(images: readonly ImageRecord[], edit: BulkEdit): NamedMetadataChange[] {
+  const changes: NamedMetadataChange[] = [];
+  for (const image of images) {
+    const tags = (image.tags ?? []).map(normalizedTag);
+    const removeTags = edit.removeTags.filter((tag) => tags.includes(normalizedTag(tag)));
+    const addTags = edit.addTags.filter((tag) => !tags.includes(tag) && !edit.removeTags.includes(tag));
+    const current = image.caption ?? "";
+    const caption = editedCaption(current, edit.caption);
+    if (!addTags.length && !removeTags.length && caption === current) continue;
+    changes.push({
+      name: image.name,
+      ...(addTags.length && { add_tags: addTags }),
+      ...(removeTags.length && { remove_tags: removeTags }),
+      ...(caption !== current && { caption }),
+    });
+  }
+  return changes;
+}
 
 /** A stored name that identical filenames can never collide on in the vault. */
 export function storedName(fileName: string): string {

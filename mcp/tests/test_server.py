@@ -733,6 +733,55 @@ class HTTPRouteTests(ServerTestCase):
         self.assertEqual([image["name"] for image in images], ["one.png"])
         self.assertEqual(updated.json()["tags"], ["cat", "sofa", "private"])
 
+    def test_batch_metadata_route_reports_each_image(self) -> None:
+        with self.client() as client:
+            response = client.post(
+                "/api/images/metadata",
+                json={
+                    "changes": [
+                        {"name": "one.png", "add_tags": ["holiday"], "caption": "A corrected caption"},
+                        {"name": "missing.png", "add_tags": ["holiday"]},
+                    ]
+                },
+            )
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body["updated"][0]["caption"], "A corrected caption")
+        self.assertIn("holiday", body["updated"][0]["tags"])
+        self.assertEqual(body["failed"][0]["name"], "missing.png")
+
+    def test_batch_metadata_route_rejects_a_malformed_body(self) -> None:
+        with self.client() as client:
+            for changes in (None, "one.png", [{"caption": "No name here"}], ["one.png"]):
+                with self.subTest(changes):
+                    response = client.post("/api/images/metadata", json={"changes": changes})
+                    self.assertEqual(response.status_code, 400)
+
+    def test_batch_delete_route_removes_the_files_and_reports_the_rest(self) -> None:
+        with self.client() as client:
+            response = client.post("/api/images/delete", json={"names": ["one.png", "missing.png"]})
+        self.assertEqual(response.json()["removed"], ["one.png"])
+        self.assertEqual(response.json()["failed"][0]["name"], "missing.png")
+        self.assertFalse((self.root / "one.png").exists())
+
+    def test_batch_routes_refuse_more_than_a_batch(self) -> None:
+        names = [f"{index}.png" for index in range(101)]
+        with self.client() as client:
+            response = client.post("/api/images/delete", json={"names": names})
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue((self.root / "one.png").is_file())
+
+    def test_hidden_batch_routes_need_the_private_token(self) -> None:
+        headers = {"Authorization": f"Bearer {'x' * 32}"}
+        body = {"changes": [{"name": "one.png", "add_tags": ["private"]}]}
+        with self.client() as client:
+            self.assertEqual(client.post("/api/hidden/images/metadata", json=body).status_code, 401)
+            client.post("/api/hidden/hide", json={"names": ["one.png"]}, headers=headers)
+            updated = client.post("/api/hidden/images/metadata", json=body, headers=headers)
+            deleted = client.post("/api/hidden/delete", json={"names": ["one.png"]}, headers=headers)
+        self.assertEqual(updated.json()["updated_count"], 1)
+        self.assertEqual(deleted.json()["removed"], ["one.png"])
+
 
 class CompanionImageRouteTests(ServerTestCase):
     HEADERS = {"Authorization": f"Bearer {'c' * 32}"}

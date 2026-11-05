@@ -92,6 +92,9 @@ class ProtectionTests(GatewayTestCase):
         ("GET", "/app/files/a.png"),
         ("POST", "/api/favorites"),
         ("POST", "/api/hidden/delete"),
+        ("POST", "/api/images/delete"),
+        ("POST", "/api/images/metadata"),
+        ("POST", "/api/hidden/images/metadata"),
     )
 
     def test_every_data_route_requires_sign_in(self):
@@ -180,6 +183,18 @@ class ProxyTests(GatewayTestCase):
         self.sign_in()
         self.assertEqual(self.client.get("/api/images/a.png/metadata").status_code, 200)
         self.assertEqual(self.backend_requests[-1].url.raw_path, b"/api/images/a.png/metadata")
+
+    def test_bulk_routes_are_forwarded_with_a_batch_timeout(self):
+        self.sign_in()
+        for path in ("/api/images/delete", "/api/images/metadata", "/api/hidden/images/metadata", "/api/hidden/hide"):
+            self.assertEqual(self.client.post(path, json={}).status_code, 200, path)
+            self.assertEqual(self.backend_requests[-1].url.path, path)
+            self.assertEqual(self.backend_requests[-1].extensions["timeout"]["read"], UIConfig.BATCH_TIMEOUT_SECONDS)
+
+    def test_single_image_routes_keep_the_short_timeout(self):
+        self.sign_in()
+        self.client.post("/api/images/a.png/metadata", json={})
+        self.assertEqual(self.backend_requests[-1].extensions["timeout"]["read"], UIConfig.API_TIMEOUT_SECONDS)
 
     def test_other_backend_routes_are_not_reachable(self):
         self.sign_in()

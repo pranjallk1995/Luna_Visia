@@ -33,6 +33,7 @@ PROXIED_ROUTES = tuple(
     (method, re.compile(pattern))
     for method, pattern in (
         ("POST", r"/api/images"),
+        ("POST", r"/api/images/(delete|metadata)"),
         ("DELETE", rf"/api/images/{NAME}"),
         ("POST", rf"/api/images/{NAME}/rename"),
         ("GET", rf"/api/images/{NAME}/metadata"),
@@ -40,8 +41,11 @@ PROXIED_ROUTES = tuple(
         ("POST", r"/api/favorites"),
         ("POST", r"/api/hidden/(hide|restore|delete)"),
         ("POST", rf"/api/hidden/images/{NAME}/metadata"),
+        ("POST", r"/api/hidden/images/metadata"),
     )
 )
+# Routes that touch a whole batch of images, so they get longer than one image's change.
+BATCH_ROUTES = re.compile(r"/api/(favorites|images/(delete|metadata)|hidden/(hide|restore|delete|images/metadata))")
 UNAVAILABLE = "Luna Visia's backend is unavailable. Please try again."
 
 
@@ -130,6 +134,7 @@ class UIGateway:
                 "logout_url": logout_url,
                 "settings": {
                     "images_per_page": UIConfig.IMAGES_PER_PAGE,
+                    "batch_size": UIConfig.BATCH_SIZE,
                     "max_tags": UIConfig.MAX_TAGS,
                     "name_max_chars": UIConfig.NAME_MAX_CHARS,
                     "caption_max_chars": UIConfig.CAPTION_MAX_CHARS,
@@ -179,14 +184,18 @@ class UIGateway:
         body = await request.body()
         if len(body) > UIConfig.MAX_REQUEST_BYTES:
             return JSONResponse({"error": "This request is too large."}, status_code=413)
-        uploading = request.method == "POST" and path == "/api/images"
+        timeout = UIConfig.API_TIMEOUT_SECONDS
+        if request.method == "POST" and path == "/api/images":
+            timeout = UIConfig.UPLOAD_TIMEOUT_SECONDS
+        elif BATCH_ROUTES.fullmatch(path):
+            timeout = UIConfig.BATCH_TIMEOUT_SECONDS
         try:
             response = await self.backend.request(
                 request.method,
                 "/".join(quote(part, safe="") for part in path.split("/")),
                 content=body,
                 headers={"Content-Type": request.headers.get("content-type", "application/json")},
-                timeout=UIConfig.UPLOAD_TIMEOUT_SECONDS if uploading else UIConfig.API_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         except httpx.HTTPError:
             return JSONResponse({"error": UNAVAILABLE}, status_code=502)

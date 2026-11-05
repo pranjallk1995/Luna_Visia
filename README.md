@@ -31,7 +31,7 @@ operations without repeatedly opening every original image.
 </p>
 
 The web interface lets you upload, search, view, favorite, download, hide,
-restore, and delete images. Image data, metadata, and AI models persist in Docker volumes,
+restore, and delete images, one at a time or as a selection. Image data, metadata, and AI models persist in Docker volumes,
 while sign-in-gated hidden images stay separate from normal galleries and searches.
 
 <p align="center">
@@ -73,10 +73,11 @@ through natural-language requests.
 ### Visible image library
 
 - Search filenames, AI captions, and tags without reopening original image files.
-- Browse natural-aspect thumbnails with six images per page and full-size viewing.
+- Browse 3:2 thumbnails with twelve images per page and full-size viewing.
 - Download individual images, or have an LLM package selected originals into a ZIP and return a short-lived download link.
 - Rename images safely while keeping filenames, metadata, and generated URLs synchronized.
 - Edit captions and tags without rerunning vision analysis.
+- Select many images in the web UI (**Select**, then click, shift-click a range, or **Select all**, across pages and searches) to favorite, unfavorite, hide, restore, or delete them together, or to correct them together: add and remove tags, find and replace text in descriptions, or give them all one description. Images that could not be changed are reported and stay selected.
 - Delete image files and their metadata together.
 
 ### Favorites and hidden images
@@ -134,7 +135,7 @@ beats of the track Vibia plays, which Lumia's lights follow.
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
-| UI | React + TypeScript (Vite), served by a Starlette gateway | Upload, search, galleries, Favorites, downloads, and authenticated hidden-image workflows |
+| UI | React + TypeScript (Vite), served by a Starlette gateway | Upload, search, galleries, Favorites, downloads, bulk actions, and authenticated hidden-image workflows |
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
 | Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen3-vl:8b-instruct` by default |
@@ -364,6 +365,8 @@ Hidden Images routes are UI-only. Like every `/api/` route except public, downlo
 and upload links, they need the private `LUNAVISIA_API_TOKEN` and name the person in
 `X-Luna-User`. Hidden images are not exposed as MCP tools.
 
+The web UI's bulk actions send at most 100 images per request to `POST /api/images/delete`, `/api/images/metadata`, `/api/hidden/delete`, and `/api/hidden/images/metadata`. Each image is applied on its own: results come back under `removed` or `updated`, and per-image errors under `failed`. Favorites, hiding, and restoring reuse `POST /api/favorites` and `/api/hidden/hide` and `/restore`.
+
 ## Metadata and search
 
 Every add, upload, or replacement is analyzed before it is committed. The generated caption, normalized tags, content hash, model name, and timestamps are stored in PostgreSQL. Deletion removes the file and its metadata consistently.
@@ -484,8 +487,8 @@ change so the client refreshes its discovered tool catalog.
 - `ui/web/src/App.tsx` - sign-in pages, header, and section navigation.
 - `ui/web/src/api.ts` - the gateway's routes and the React Query hooks; changes apply on screen first and roll back if the server refuses them.
 - `ui/web/src/uploads.ts` - the upload queue, which keeps running when the dialog is closed.
-- `ui/web/src/lib.ts` - pure helpers for names, sizes, search, and paging.
-- `ui/web/src/components/` - `Gallery`, `ImageCard`, `PreviewDialog`, `UploadDialog`, `ConfirmDialog`, `Dialog`, `Pager`, `SearchBox`, and `Toasts`.
+- `ui/web/src/lib.ts` - pure helpers for names, sizes, search, paging, selections, and bulk edits.
+- `ui/web/src/components/` - `Gallery`, `ImageCard`, `BulkBar`, `BulkEditDialog`, `PreviewDialog`, `UploadDialog`, `ConfirmDialog`, `Dialog`, `Pager`, `SearchBox`, and `Toasts`.
 - `ui/web/src/styles.css` - the Luna visual system.
 - `ui/requirements.txt` - Python dependencies used by the UI container.
 - `ui/Dockerfile` - builds the UI container image.
