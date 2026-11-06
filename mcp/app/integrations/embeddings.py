@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 from app.core.config import AppConfig
+from app.integrations.model_usage import ModelUsage
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,10 @@ class SiglipEmbedder:
         self._model = None
         self._processor = None
         self._lock = threading.Lock()
+        self.usage = ModelUsage(model_name, "Image and text embeddings for meaning search", self._state)
+
+    def _state(self) -> tuple[bool, str]:
+        return (True, "cuda") if self._model is not None else (False, "loads on first use (CUDA only)")
 
     def _load(self):
         with self._lock:
@@ -55,6 +60,12 @@ class SiglipEmbedder:
         import torch
 
         model, _ = self._load()
+        with self.usage.record():
+            return self._attempts(model, method, inputs)
+
+    def _attempts(self, model, method: str, inputs) -> np.ndarray:
+        import torch
+
         for attempt in range(AppConfig.EMBEDDING_GPU_ATTEMPTS):
             try:
                 with torch.no_grad():

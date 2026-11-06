@@ -95,6 +95,17 @@ through natural-language requests.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
 - Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback. SigLIP 2 image embeddings run on the GPU only; without one, `backfill_metadata` adds them later.
 
+## The model outside Ollama
+
+Besides the models it calls through Ollama, Luna Visia runs one of its own, inside its
+backend: SigLIP 2 (`google/siglip2-base-patch16-224`), which turns every image and every search into an embedding for meaning search. It runs on the GPU only, loads on the first image or search, and stays loaded.
+
+Its calls never pass through [Luna Sentia's model monitor](https://github.com/pranjallk1995/Luna_Sentia#model-monitor), so the app counts them itself: whether the model is
+loaded and on which device, its calls, failures, and busy time since the app started,
+and the GPU memory this process holds (from torch, since WSL cannot split VRAM by
+process). `GET /api/models` reports them, for the owner only, and the monitor's **Inside
+the apps** card asks every ten seconds.
+
 ## Users and separate storage
 
 Each person signs in with Google and has their own space in Luna Visia: the schema `u_<id>` in the `lunavisia` database, and the folder `u_<id>` in the `luna_visia_image_data` volume. It is created the first time they use the app. The owner adds, disables, and deletes people at Luna Sentia's `/admin`, and can hide this app from everyone else there; see [Users and separate storage](https://github.com/pranjallk1995/Luna_Sentia#users-and-separate-storage).
