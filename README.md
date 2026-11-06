@@ -6,7 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
-![Status: v1.1](https://img.shields.io/badge/Status-v1.1-2EA043)
+![Status: v1.2](https://img.shields.io/badge/Status-v1.2-2EA043)
 
 <p align="center">
   <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images, and to search by meaning with embeddings and hand back a ZIP, through its MCP tools" width="900"></a>
@@ -50,9 +50,9 @@ The main gallery provides filename search, pagination, AI-generated captions and
 tags, full-size viewing, downloads, and deletion controls. Persisted Favorites
 provide a focused collection for images you return to often.
 
-Hidden Images uses the same Google sign-in as the rest of
-the UI and supports adding, viewing, downloading, restoring, searching, and
-deleting images separately.
+Hidden Images asks for your [hidden-items PIN](https://github.com/pranjallk1995/Luna_Sentia#hidden-items-pin) on top of the Google sign-in
+and supports adding, viewing, downloading, restoring, searching, and deleting
+images separately.
 
 Connect Luna Visia's `/mcp` endpoint to the ChatGPT app as a custom MCP server.
 Once connected, you can ask ChatGPT to search the vault, inspect image metadata,
@@ -83,7 +83,7 @@ through natural-language requests.
 ### Favorites and hidden images
 
 - Maintain a persisted Favorites collection for visible images.
-- Protect Hidden Images with the signed-in UI session.
+- Protect Hidden Images with the signed-in UI session and your [hidden-items PIN](https://github.com/pranjallk1995/Luna_Sentia#hidden-items-pin), which unlocks them until you leave the tab or stay idle for 10 minutes. While locked, hidden images' files and thumbnails are refused too.
 - Authenticate the UI's Hidden Images backend requests with a private service credential.
 - View, edit, download, restore, or permanently delete hidden images through authenticated routes.
 - Exclude hidden images from public galleries, searches, previews, URLs, and MCP tools.
@@ -248,7 +248,8 @@ Docker is not started automatically by repository setup or validation.
 Luna Sentia pulls the vision model; make sure `VISION_MODEL` is listed in
 Sentia's `SENTIA_MODELS`. Open Luna Visia at
 <http://127.0.0.1:18501>. After signing in,
-the Hidden Images tab opens directly without another password or PIN prompt.
+the Hidden Images tab asks for your hidden-items PIN, which you set once in Luna Sentia
+at `/pin` for Visia, Lexia, and Vibia.
 
 Check GPU use while analysis is active:
 

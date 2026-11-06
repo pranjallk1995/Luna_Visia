@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { useSession, type Section, type Session } from "./api";
 import { Gallery } from "./components/Gallery";
+import { HiddenGate } from "./components/HiddenGate";
 import { UploadDialog } from "./components/UploadDialog";
 import { remember, remembered } from "./lib";
 import { useUploads } from "./uploads";
@@ -130,7 +131,13 @@ function Workspace({ session }: { session: Extract<Session, { status: "signed_in
         ))}
       </nav>
 
-      <Gallery key={section} section={section} layout={layout} settings={session.settings} />
+      {section === "hidden" ? (
+        <HiddenGate noun="images">
+          <Gallery key={section} section={section} layout={layout} settings={session.settings} />
+        </HiddenGate>
+      ) : (
+        <Gallery key={section} section={section} layout={layout} settings={session.settings} />
+      )}
 
       {uploading && <UploadDialog uploads={uploads} settings={session.settings} onClose={() => setUploading(false)} />}
     </main>
