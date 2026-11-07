@@ -280,11 +280,13 @@ class VisiaHTTPRoutes:
     COMPANION_FIELDS = ("status", "message", "name", "image_id", "public_url", "caption", "tags")
 
     def _register_companion_images(self) -> None:
-        """Let Luna Vita and Luna Vibia store an image and get its stable public URL.
+        """Let Luna Vita, Vibia, and Lumia store an image, or tag the images they use.
 
         The body names one source as upload_image takes it (image_url, content_base64,
         or a chat file reference) plus an optional name and tags. Identical bytes
         return the stored image as "duplicate", so a retried request is harmless.
+        The tags route takes {"image_ids": [...], "tags": [...]} and adds the tags
+        to each image, so every image another app uses carries that app's name.
         """
         visible = self.service.visible
 
@@ -305,18 +307,26 @@ class VisiaHTTPRoutes:
                 stored = {**stored, **visible.update_metadata(stored["name"], MetadataChange(add_tags=tags))}
             return {key: stored[key] for key in self.COMPANION_FIELDS if key in stored}
 
-        async def companion_image(request: Request):
-            if self.companion is None:
-                return JSONResponse(
-                    {"error": "Companion uploads are off; set LUNAVISIA_COMPANION_TOKEN in Luna Visia."},
-                    status_code=503,
-                )
-            rejection = self.companion.rejection(request)
-            if rejection is not None:
-                return rejection
-            return await anyio.to_thread.run_sync(store, await self.payload(request))
+        def companion(handler: Callable[[dict[str, Any]], Any]) -> Handler:
+            async def endpoint(request: Request):
+                if self.companion is None:
+                    return JSONResponse(
+                        {"error": "Companion uploads are off; set LUNAVISIA_COMPANION_TOKEN in Luna Visia."},
+                        status_code=503,
+                    )
+                rejection = self.companion.rejection(request)
+                if rejection is not None:
+                    return rejection
+                return await anyio.to_thread.run_sync(handler, await self.payload(request))
 
-        self.route("POST", "/api/companion/images", companion_image, 201)
+            return endpoint
+
+        def tag(payload: dict[str, Any]) -> dict[str, Any]:
+            return visible.tag_for_app(payload.get("image_ids"), payload.get("tags"))
+
+        self.route("POST", "/api/companion/images", companion(store), 201)
+        # Every app tags the Visia images it uses with its name, so Visia shows who uses what.
+        self.route("POST", "/api/companion/images/tags", companion(tag))
 
     def _register_favorites(self) -> None:
         visible = self.service.visible

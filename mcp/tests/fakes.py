@@ -99,7 +99,8 @@ class FakeImageRepository:
         )
 
     def user_of_image_id(self, identifier):
-        return None
+        # One gallery in the fakes: the owner's.
+        return "owner" if any(row["image_id"] == identifier for row in self.rows.values()) else None
 
     def name_for_image_id(self, image_id):
         return next(

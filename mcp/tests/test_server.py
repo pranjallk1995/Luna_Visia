@@ -839,6 +839,58 @@ class CompanionImageRouteTests(ServerTestCase):
         self.assertEqual(response.status_code, 503)
 
 
+class CompanionTagRouteTests(ServerTestCase):
+    HEADERS = {"Authorization": f"Bearer {'c' * 32}"}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.http = self.client().__enter__()
+
+    def tearDown(self) -> None:
+        self.http.__exit__(None, None, None)
+        super().tearDown()
+
+    def tag(self, body: dict, headers: dict | None = None):
+        return self.http.post("/api/companion/images/tags", json=body, headers=headers or self.HEADERS)
+
+    def image_id(self, name: str = "one.png") -> str:
+        return self.repository.rows[name]["image_id"]
+
+    def test_requires_the_companion_token(self) -> None:
+        response = self.tag({"image_ids": [self.image_id()], "tags": ["luna vibia"]}, {"X-Other": "1"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_adds_the_app_tag_once(self) -> None:
+        body = {"image_ids": [self.image_id().upper()], "tags": ["luna vibia", "cover art"]}
+        first, second = self.tag(body).json(), self.tag(body).json()
+        tags = self.repository.rows["one.png"]["tags"]
+        self.assertEqual(first["tagged"][0]["added"], ["luna vibia", "cover art"])
+        self.assertEqual(second["tagged"][0]["added"], [])
+        self.assertEqual(tags.count("luna vibia"), 1)
+        self.assertIn("cover art", tags)
+
+    def test_reports_unknown_and_hidden_images(self) -> None:
+        self.service.hidden.set_hidden(["one.png"], True)
+        body = self.tag({"image_ids": [self.image_id(), "0" * 8 + "-0000-0000-0000-" + "0" * 12], "tags": ["luna vita"]})
+        self.assertEqual(body.status_code, 200)
+        self.assertEqual(body.json()["failed_count"], 2)
+        self.assertNotIn("luna vita", self.repository.rows["one.png"]["tags"])
+
+    def test_rejects_capitalized_tags(self) -> None:
+        response = self.tag({"image_ids": [self.image_id()], "tags": ["Luna Vita"]})
+        self.assertEqual(response.status_code, 400)
+
+    def test_full_images_drop_ordinary_tags_not_system_or_app_tags(self) -> None:
+        limit = self.service.visible.rules.max_tags
+        full = ["luna lumia", *(f"tag {n}" for n in range(limit - 2)), "ai info"]
+        self.repository.rows["one.png"]["tags"] = full
+        self.tag({"image_ids": [self.image_id()], "tags": ["luna vita"]})
+        tags = self.repository.rows["one.png"]["tags"]
+        self.assertEqual(len(tags), limit)
+        self.assertEqual((tags[0], tags[-2], tags[-1]), ("luna lumia", "ai info", "luna vita"))
+        self.assertNotIn(f"tag {limit - 3}", tags)
+
+
 class BrandingTests(ServerTestCase):
     def test_favicon_route_serves_icon(self) -> None:
         with self.client() as client:

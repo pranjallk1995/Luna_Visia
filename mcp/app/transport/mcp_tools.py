@@ -181,6 +181,10 @@ class VisiaMCPTools:
             exclude_tags leaves out images carrying any of those tags; it can be
             the only filter, e.g. exclude_tags=["ai info"] finds every image not
             marked as AI-generated.
+            Images other Luna apps use carry that app's tag: "luna vibia" (track
+            cover art), "luna vita" (food images), "luna lumia" (room and light
+            pictures); e.g. tags=["luna vibia"] lists every cover, and
+            update_images_metadata edits many of them at once.
             Tags must be lowercase; a tag containing capital letters is rejected.
             Results include each image's public_url; follow next_offset for more.
             Set include_preview=true to also get a numbered contact sheet of the

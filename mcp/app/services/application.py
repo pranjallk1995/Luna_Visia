@@ -384,6 +384,57 @@ class VisibleImageService(ImageCollectionService):
             result["requested_name"] = requested_name
         return result
 
+    # Tags that say what an image is or who uses it; never dropped to make room for another.
+    KEPT_TAGS = frozenset({ImageIndexer.AI_INFO_TAG, ImageIndexer.AI_MODIFIED_TAG})
+
+    def tag_for_app(self, image_ids: list[str], tags: list[str]) -> dict[str, Any]:
+        """Add a companion app's tags (e.g. "luna vibia") to the images it uses.
+
+        Each image is tagged in the gallery that holds it, whoever's that is, since
+        apps share the owner's placeholders and room pictures. An image that already
+        has every tag is left untouched. When an image is at the tag limit, its last
+        ordinary tags make room: system and app tags are never dropped.
+        """
+        if not isinstance(image_ids, list) or not all(isinstance(item, str) for item in image_ids):
+            raise ValueError("image_ids must be a list of strings.")
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError("tags must be a list of strings.")
+        MetadataRules.require_lowercase_tags(tags, "tags")
+        wanted = self.rules.normalize_tags(tags)
+        ids = unique_names([item.strip().lower() for item in image_ids], "Provide at least one image ID.")
+        if len(ids) > AppConfig.BATCH_MAX_IMAGES:
+            raise ValueError(f"Tag at most {AppConfig.BATCH_MAX_IMAGES} images at a time.")
+        tagged, failed = [], []
+        for image_id in ids:
+            holder = self.images.user_of_image_id(image_id)
+            if holder is None:
+                failed.append({"image_id": image_id, "error": f"No image has ID {image_id}."})
+                continue
+            with tenancy.acting_as(holder):
+                name = self.images.name_for_image_id(image_id)
+                row = self.images.get(name, hidden=self.HIDDEN) if name else None
+                if row is None:
+                    failed.append({"image_id": image_id, "error": "The image is hidden or gone."})
+                    continue
+                missing = [tag for tag in wanted if tag not in row["tags"]]
+                if missing:
+                    row = self.images.update_metadata(
+                        name, row["caption"], self._with_kept_tags(row["tags"], missing), hidden=self.HIDDEN
+                    )
+            tagged.append({"image_id": image_id, "name": row["name"], "tags": row["tags"], "added": missing})
+        return {"tagged_count": len(tagged), "failed_count": len(failed), "tagged": tagged, "failed": failed}
+
+    def _with_kept_tags(self, current: list[str], extra: list[str]) -> list[str]:
+        """``current`` plus ``extra``, dropping trailing ordinary tags past the limit."""
+        tags = list(current)
+        kept = self.KEPT_TAGS | {tag for tag in tags if tag.startswith("luna ")}
+        while len(tags) + len(extra) > self.rules.max_tags:
+            droppable = [index for index, tag in enumerate(tags) if tag not in kept]
+            if not droppable:
+                raise ValueError(f"Images can have at most {self.rules.max_tags} tags.")
+            del tags[droppable[-1]]
+        return [*tags, *extra]
+
     def rename(self, name: str, new_name: str) -> dict[str, Any]:
         """Rename an image, keeping its extension, immutable ID, and public URL."""
         source = self.path(name)

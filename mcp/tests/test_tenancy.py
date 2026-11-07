@@ -157,6 +157,7 @@ class RestUserTests(WithoutTestUser):
             routes=[
                 Route("/api/thing", whoami),
                 Route("/api/metadata", whoami),
+                Route("/api/companion/images/tags", whoami, methods=["POST"]),
                 Route("/api/public/x", lambda request: JSONResponse({"open": True})),
                 Route("/health", lambda request: JSONResponse({"ok": True})),
             ]
@@ -185,6 +186,8 @@ class RestUserTests(WithoutTestUser):
         self.assertEqual(client.get("/api/metadata", headers=self.headers(COMPANION)).status_code, 200)
         self.assertEqual(client.get("/api/thing", headers=self.headers(COMPANION)).status_code, 401)
         self.assertEqual(client.post("/api/metadata", headers=self.headers(COMPANION)).status_code, 401)
+        tags = client.post("/api/companion/images/tags", headers=self.headers(COMPANION))
+        self.assertEqual(tags.json(), {"user": "ab12"})
 
     def test_open_paths_and_non_api_routes_need_nothing(self) -> None:
         client = self.client()

@@ -6,7 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
-![Status: v1.2](https://img.shields.io/badge/Status-v1.2-2EA043)
+![Status: v1.3](https://img.shields.io/badge/Status-v1.3-2EA043)
 
 <p align="center">
   <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images, and to search by meaning with embeddings and hand back a ZIP, through its MCP tools" width="900"></a>
@@ -358,6 +358,7 @@ Luna Visia exposes these tools to connected MCP clients:
 - `list_image_metadata` - bulk metadata for searching and classifying many images with an LLM. It pages newest first like `list_images` (`limit`, default 50; follow `next_offset`) or takes an exact `names` batch, listing missing or hidden names under `unavailable`. `detail="summary"` (up to 100 per call) returns each image's name, caption, tags, favorite flag, size, `updated_at`, and `public_url` plus an `embedded` object with format, dimensions, `ai_generated`, `ai_signals`, generator, camera, lens, capture time, software, and GPS when present. `detail="full"` (up to 20 per call) returns the complete `get_image_metadata` output for each image.
 - `update_image_metadata` - update a visible image's caption and/or add or remove tags without replacing the image or re-running vision analysis. Tags must be lowercase: a tag with capital letters is rejected and nothing is changed.
 - `update_images_metadata` - apply caption and tag changes to up to 100 visible images in one call, for example LLM classification results from `list_image_metadata`. Each entry (`name`, optional `caption`, `add_tags`, `remove_tags`) is applied independently and reported under `updated` or `failed`; a capitalized tag anywhere rejects the whole batch with nothing changed.
+- App tags - every image another Luna app uses carries that app's tag: `luna vibia` (track covers, with `cover art`), `luna vita` (food images, with `food`), and `luna lumia` (room and light pictures). The apps add them through `POST /api/companion/images/tags` with `LUNAVISIA_COMPANION_TOKEN`; an image at the tag limit drops its last ordinary tags, never `ai info`, `ai modified`, or an app tag. Find them with `search_images(tags=[...])` and edit many with `update_images_metadata`.
 - `set_starter_images` - owner only: choose the images everyone starts with; hidden images and favorites are never included.
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
 - `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. `exclude_tags` leaves out images carrying those tags and can be the only filter (`exclude_tags=["ai info"]` finds every image not marked as AI-generated). Tag filters must be lowercase too.
