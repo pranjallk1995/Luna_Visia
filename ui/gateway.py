@@ -138,6 +138,7 @@ class UIGateway:
                 "email": user.get("email"),
                 "logout_url": logout_url,
                 "settings": {
+                    "version": UIConfig.VERSION,
                     "images_per_page": UIConfig.IMAGES_PER_PAGE,
                     "batch_size": UIConfig.BATCH_SIZE,
                     "max_tags": UIConfig.MAX_TAGS,
@@ -284,7 +285,7 @@ class UIGateway:
 
     @staticmethod
     async def health(request: Request) -> Response:
-        return JSONResponse({"status": "ok"})
+        return JSONResponse({"status": "ok", "version": UIConfig.VERSION})
 
     def application(self) -> Starlette:
         app = Starlette(

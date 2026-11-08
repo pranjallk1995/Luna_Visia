@@ -140,6 +140,7 @@ function Workspace({ session }: { session: Extract<Session, { status: "signed_in
       )}
 
       {uploading && <UploadDialog uploads={uploads} settings={session.settings} onClose={() => setUploading(false)} />}
+      <footer className="lv-footer">Luna Visia · v{session.settings.version}</footer>
     </main>
   );
 }

@@ -19,6 +19,7 @@ export type ImageRecord = {
 };
 
 export type Settings = {
+  version: string;
   images_per_page: number;
   batch_size: number;
   max_tags: number;
