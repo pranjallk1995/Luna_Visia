@@ -6,7 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
-![Status: v1.3](https://img.shields.io/badge/Status-v1.3-2EA043)
+![Status: v1.4](https://img.shields.io/badge/Status-v1.4-2EA043)
 
 <p align="center">
   <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images, and to search by meaning with embeddings and hand back a ZIP, through its MCP tools" width="900"></a>
@@ -94,6 +94,16 @@ through natural-language requests.
 - Expose searchable image operations to compatible assistants through Streamable HTTP MCP.
 - Keep Ollama and PostgreSQL private to the shared Docker network while binding UI and MCP ports to localhost.
 - Use an optional NVIDIA GPU for vision analysis (configured in Luna Sentia), with a slower CPU fallback. SigLIP 2 image embeddings run on the GPU only; without one, `backfill_metadata` adds them later.
+
+## Models
+
+| Part | Model | Where it runs | Before changing it |
+| --- | --- | --- | --- |
+| Captions and tags | `VISION_MODEL` (default `qwen3-vl:8b-instruct`), 16k context | Sentia's Ollama, on the GPU | Compare it on every stored image with [`model_evaluations/`](model_evaluations/README.md); afterwards `backfill_metadata` re-analyzes images made by another model |
+| Meaning search | SigLIP 2 (`google/siglip2-base-patch16-224`, `EMBEDDING_MODEL` in `mcp/app/core/config.py`) | Here, on the GPU only, in its own process | Pinned in the image; after a change `backfill_metadata` re-embeds every image made by another model |
+
+`VISION_MODEL` must be in Sentia's `SENTIA_MODELS`; Sentia's
+[Changing a model](https://github.com/pranjallk1995/Luna_Sentia#changing-a-model) lists every check to run first.
 
 ## The model outside Ollama
 
@@ -297,6 +307,15 @@ Visia reaches Ollama at `http://luna-sentia-ollama:11434` on the shared
 published on a host port, and no API key or external image service is used.
 Visia does not wait for the model at startup: uploads made before Sentia has
 finished pulling it fail until the model is available.
+
+### Before changing the model
+
+Compare the new model with the current one on the whole gallery first:
+[`model_evaluations/`](model_evaluations/README.md) captions every stored image with
+both, without writing to the database, and scores how well each caption matches its
+image in SigLIP 2's space, plus failures, tag counts, language and time. Run Luna
+Sentia's `model_checks/check_model.py` on the model before that; the full list of
+checks is in Sentia's [Changing a model](https://github.com/pranjallk1995/Luna_Sentia#changing-a-model).
 
 ## Codex MCP configuration (optional)
 

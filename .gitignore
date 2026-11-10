@@ -17,3 +17,7 @@ ui/web/dist/
 # Editors and OS
 *.swp
 .DS_Store
+
+# Model-evaluation results (captions and replies from real data)
+model_evaluations/results/
+*.jsonl
