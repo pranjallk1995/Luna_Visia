@@ -32,6 +32,9 @@ class AppConfig:
     EMBEDDING_INPUT_EDGE: ClassVar[int] = 224
     EMBEDDING_GPU_ATTEMPTS: ClassVar[int] = 3
     EMBEDDING_GPU_RETRY_SECONDS: ClassVar[float] = 2.0
+    # SigLIP 2 runs in its own process, which exits after this many idle seconds so the
+    # GPU is fully free for Luna Sentia's resident chat model (see gpu_worker.py).
+    GPU_MODEL_IDLE_SECONDS: ClassVar[float] = float(os.getenv("GPU_MODEL_IDLE_SECONDS", "120") or 120)
     FULL_DETAIL_MAX_IMAGES: ClassVar[int] = 20
     BATCH_MAX_IMAGES: ClassVar[int] = 100
     CREDENTIAL_SALT_BYTES: ClassVar[int] = 16

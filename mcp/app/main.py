@@ -13,7 +13,7 @@ from app.transport.mcp_tools import VisiaMCPTools
 from app.core.models import MetadataRules
 from app.integrations.remote import ImageSourceResolver
 from app.data.repositories import ImageRepository, PublicURLRepository
-from app.integrations.embeddings import SiglipEmbedder
+from app.integrations.embeddings import IdleSiglipEmbedder
 from app.services.application import VisiaService
 from app.services.starter import StarterLibrary
 from app.integrations.vision import OllamaVisionAnalyzer
@@ -37,7 +37,7 @@ class LunaVisiaApplication:
                     config.vision_model,
                     MetadataRules(config.max_tags, config.search_stop_words),
                 ),
-                SiglipEmbedder(),
+                IdleSiglipEmbedder(),
             )
         self.service.starter = StarterLibrary(self.database, config.image_dir)
         self.database.tenants.after_create = self.prepare_person

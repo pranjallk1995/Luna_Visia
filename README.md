@@ -98,7 +98,7 @@ through natural-language requests.
 ## The model outside Ollama
 
 Besides the models it calls through Ollama, Luna Visia runs one of its own, inside its
-backend: SigLIP 2 (`google/siglip2-base-patch16-224`), which turns every image and every search into an embedding for meaning search. It runs on the GPU only, loads on the first image or search, and stays loaded.
+backend: SigLIP 2 (`google/siglip2-base-patch16-224`), which turns every image and every search into an embedding for meaning search. It runs on the GPU only, in its own process, which loads on the first image or search and exits after `GPU_MODEL_IDLE_SECONDS` (120) unused, so the GPU is fully free again for Luna Sentia's resident chat model.
 
 Its calls never pass through [Luna Sentia's model monitor](https://github.com/pranjallk1995/Luna_Sentia#model-monitor), so the app counts them itself: whether the model is
 loaded and on which device, its calls, failures, and busy time since the app started,

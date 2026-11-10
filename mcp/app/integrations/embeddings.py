@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 from app.core.config import AppConfig
+from app.integrations.gpu_worker import IdleWorker, WorkerDiedError
 from app.integrations.model_usage import ModelUsage
 
 logger = logging.getLogger(__name__)
@@ -101,3 +102,37 @@ class SiglipEmbedder:
         _, processor = self._load()
         inputs = processor(text=[text], padding="max_length", max_length=64, return_tensors="pt")
         return self._unit(self._run("get_text_features", inputs))[0].round(6).tolist()
+
+
+class IdleSiglipEmbedder:
+    """``SiglipEmbedder`` in its own process, which exits after ``idle_seconds`` unused.
+
+    A batch of uploads loads SigLIP 2 once and embeds every image; a few minutes after
+    the last one the process ends and the GPU is fully free again (see gpu_worker.py).
+    A process that cannot start or dies counts as no GPU: the image's embedding waits
+    for ``backfill_metadata``, as with any other ``EmbeddingUnavailableError``.
+    """
+
+    def __init__(self, model_name: str = AppConfig.EMBEDDING_MODEL,
+                 idle_seconds: float = AppConfig.GPU_MODEL_IDLE_SECONDS) -> None:
+        self.model_name = model_name
+        self.worker = IdleWorker(SiglipEmbedder, (model_name,), idle_seconds=idle_seconds)
+        self.usage = ModelUsage(model_name, "Image and text embeddings for meaning search", self._state)
+
+    def _state(self) -> tuple[bool, str]:
+        if self.worker.alive:
+            return True, "cuda (own process)"
+        return False, f"loads on first use (CUDA only); unloads after {self.worker.idle_seconds:.0f} s idle"
+
+    def _call(self, method: str, value):
+        with self.usage.record():
+            try:
+                return self.worker.call(method, value)
+            except WorkerDiedError as error:
+                raise EmbeddingUnavailableError(str(error)) from error
+
+    def embed_image(self, data: bytes) -> list[float]:
+        return self._call("embed_image", data)
+
+    def embed_text(self, text: str) -> list[float]:
+        return self._call("embed_text", text)
