@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 class AppConfig:
     """Immutable backend settings loaded from environment variables."""
 
+    # Hosts where MCP_PUBLIC_URL may be plain HTTP: a local start without a tunnel.
+    LOCAL_HOSTS: ClassVar[frozenset[str]] = frozenset({"localhost", "127.0.0.1"})
     ASSET_DIR: ClassVar[Path] = Path(__file__).resolve().parent.parent / "assets"
     VISION_MAX_INPUT_EDGE: ClassVar[int] = 1024
     # Luna Lexia asks Sentia for the same model with this context. Ollama reloads a
@@ -30,6 +32,8 @@ class AppConfig:
     EMBEDDING_MODEL: ClassVar[str] = "google/siglip2-base-patch16-224"
     EMBEDDING_DIMENSIONS: ClassVar[int] = 768
     EMBEDDING_INPUT_EDGE: ClassVar[int] = 224
+    # SigLIP 2 reads at most this many text tokens; longer searches and captions are cut there.
+    EMBEDDING_TEXT_TOKENS: ClassVar[int] = 64
     EMBEDDING_GPU_ATTEMPTS: ClassVar[int] = 3
     EMBEDDING_GPU_RETRY_SECONDS: ClassVar[float] = 2.0
     # SigLIP 2 runs in its own process, which exits after this many idle seconds so the
@@ -148,8 +152,9 @@ class AppConfig:
         mcp_public_url = os.getenv("MCP_PUBLIC_URL", "").strip().rstrip("/")
         if mcp_public_url:
             parsed_public_url = urlparse(mcp_public_url)
-            if parsed_public_url.scheme != "https" or not parsed_public_url.netloc:
-                raise RuntimeError("MCP_PUBLIC_URL must be a valid HTTPS URL.")
+            local = parsed_public_url.scheme == "http" and parsed_public_url.hostname in cls.LOCAL_HOSTS
+            if not (parsed_public_url.scheme == "https" or local) or not parsed_public_url.netloc:
+                raise RuntimeError("MCP_PUBLIC_URL must be an HTTPS URL, or HTTP on localhost.")
         return cls(
             mcp_public_url=mcp_public_url,
             image_dir=image_dir,

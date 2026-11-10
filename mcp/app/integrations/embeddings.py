@@ -100,7 +100,8 @@ class SiglipEmbedder:
     def embed_text(self, text: str) -> list[float]:
         """A unit-length embedding of a description, comparable with image embeddings."""
         _, processor = self._load()
-        inputs = processor(text=[text], padding="max_length", max_length=64, return_tensors="pt")
+        inputs = processor(text=[text], padding="max_length", max_length=AppConfig.EMBEDDING_TEXT_TOKENS,
+                           truncation=True, return_tensors="pt")
         return self._unit(self._run("get_text_features", inputs))[0].round(6).tolist()
 
 

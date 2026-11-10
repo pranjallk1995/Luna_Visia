@@ -1,14 +1,14 @@
 services:
   mcp:
     build: ./mcp
-    image: ghcr.io/pranjallk1995/luna-visia-mcp:${LUNA_IMAGE_TAG:-v1.4.0}
+    image: ghcr.io/pranjallk1995/luna-visia-mcp:${LUNA_IMAGE_TAG:-v1.4.1}
     working_dir: /workspace/mcp
     restart: unless-stopped
     # SigLIP image embeddings are made on the GPU only; without one, images are
     # stored without embeddings (backfill_metadata adds them once a GPU is back).
     gpus: all
     environment:
-      LUNA_SSO_URL: ${LUNA_SSO_URL:?Set LUNA_SSO_URL to Luna Sentia's public sign-on address}
+      LUNA_SSO_URL: ${LUNA_SSO_URL:-http://localhost:19090}
       LUNA_SSO_INTERNAL_URL: ${LUNA_SSO_INTERNAL_URL:-http://luna-sentia-auth:8000}
       DATABASE_URL: postgresql://lunavisia:${POSTGRES_PASSWORD:-lunavisia-dev}@luna-sentia-db:5432/lunavisia
       IMAGE_DIR: /data/images
@@ -55,11 +55,11 @@ services:
 
   ui:
     build: ./ui
-    image: ghcr.io/pranjallk1995/luna-visia-ui:${LUNA_IMAGE_TAG:-v1.4.0}
+    image: ghcr.io/pranjallk1995/luna-visia-ui:${LUNA_IMAGE_TAG:-v1.4.1}
     working_dir: /workspace/ui
     restart: unless-stopped
     environment:
-      LUNA_SSO_URL: ${LUNA_SSO_URL:?Set LUNA_SSO_URL to Luna Sentia's public sign-on address}
+      LUNA_SSO_URL: ${LUNA_SSO_URL:-http://localhost:19090}
       LUNA_SSO_INTERNAL_URL: ${LUNA_SSO_INTERNAL_URL:-http://luna-sentia-auth:8000}
       IMAGE_DIR: /data/images
       LUNAVISIA_API_URL: http://luna-visia-mcp:8000
