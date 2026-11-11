@@ -1,7 +1,7 @@
 services:
   mcp:
     build: ./mcp
-    image: ghcr.io/pranjallk1995/luna-visia-mcp:${LUNA_IMAGE_TAG:-v1.4.2}
+    image: ghcr.io/pranjallk1995/luna-visia-mcp:${LUNA_IMAGE_TAG:-v1.5.0}
     working_dir: /workspace/mcp
     restart: unless-stopped
     # SigLIP image embeddings are made on the GPU only; without one, images are
@@ -55,7 +55,7 @@ services:
 
   ui:
     build: ./ui
-    image: ghcr.io/pranjallk1995/luna-visia-ui:${LUNA_IMAGE_TAG:-v1.4.2}
+    image: ghcr.io/pranjallk1995/luna-visia-ui:${LUNA_IMAGE_TAG:-v1.5.0}
     working_dir: /workspace/ui
     restart: unless-stopped
     environment:

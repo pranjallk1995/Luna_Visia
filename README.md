@@ -6,7 +6,7 @@
 ![Luna Sentia required](https://img.shields.io/badge/Luna_Sentia-required-111111?logo=ollama&logoColor=white)
 ![PostgreSQL in Luna Sentia](https://img.shields.io/badge/PostgreSQL-in_Luna_Sentia-4169E1?logo=postgresql&logoColor=white)
 ![NVIDIA GPU optional](https://img.shields.io/badge/NVIDIA_GPU-optional-76B900?logo=nvidia&logoColor=white)
-![Status: v1.4](https://img.shields.io/badge/Status-v1.4-2EA043)
+![Status: v1.5](https://img.shields.io/badge/Status-v1.5-2EA043)
 
 <p align="center">
   <a href="docs/assets/luna-visia-showcase.mp4"><img src="docs/assets/luna-visia-showcase.webp" alt="From Google sign-in through Luna Unia to searching and browsing images in Luna Visia, then asking a chat assistant to find images, and to search by meaning with embeddings and hand back a ZIP, through its MCP tools" width="900"></a>
