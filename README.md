@@ -217,7 +217,9 @@ To start Sentia and every Luna app together, with or without Compose Watch, use
 `../luna.sh start [--watch]`; see the
 [Sentia README](https://github.com/pranjallk1995/Luna_Sentia#start-everything).
 
-Create a private `.env`:
+A fresh clone needs no `.env`: `luna.sh start` runs Visia with localhost defaults, where only Luna Sentia's owner may use it and the UI-to-backend token is `lunavisia-dev-token-for-localhost-only`. Set your own values before giving it a public (https) address; `luna.sh start` refuses a public app that still uses the default token.
+
+To change them, create a private `.env`:
 
 ```dotenv
 # Must equal LUNAVISIA_DB_PASSWORD in Luna_Sentia/.env
@@ -251,8 +253,8 @@ Visia needs no Google client of its own. Set in `.env`:
   Sentia's `.env`), for example `https://auth.lunaapps.fyi`.
 - `LUNA_SSO_INTERNAL_URL`: `http://luna-sentia-auth:8000`, where Visia checks
   sessions over `luna_sentia_network`.
-- `LUNAVISIA_ALLOWED_EMAILS`: who may use Visia among the people with a Luna account: `*`
-  for everyone, or a comma-separated list. Checked after Sentia confirms who is signed in.
+- `LUNAVISIA_ALLOWED_EMAILS`: who may use Visia among the people with a Luna account: blank
+  (the default) for Sentia's owner only, `*` for everyone, or a comma-separated list. The owner always may. Checked after Sentia confirms who is signed in.
 
 Sentia's auth service must be healthy before Visia can sign anyone in; see
 [Single sign-on](https://github.com/pranjallk1995/Luna_Sentia#single-sign-on) for its setup.
