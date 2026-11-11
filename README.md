@@ -240,7 +240,7 @@ openssl rand -hex 32
 
 `*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `UI_PUBLIC_URL` is the address of the web UI, which the `get_ui_link` tool gives out.
-`MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18000`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
+`MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18004`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
 ### Sign-in
@@ -267,10 +267,10 @@ docker compose up --build
 
 Open:
 
-- UI: <http://127.0.0.1:18501>
-- Service health: <http://127.0.0.1:18000/health>
-- Favicon and icons: <http://127.0.0.1:18000/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
-- MCP endpoint: <http://127.0.0.1:18000/mcp> (clients sign in; see Connecting an MCP client)
+- UI: <http://127.0.0.1:18505>
+- Service health: <http://127.0.0.1:18004/health>
+- Favicon and icons: <http://127.0.0.1:18004/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
+- MCP endpoint: <http://127.0.0.1:18004/mcp> (clients sign in; see Connecting an MCP client)
 
 The example keeps these development defaults:
 
@@ -288,7 +288,7 @@ Docker is not started automatically by repository setup or validation.
 
 Luna Sentia pulls the vision model; make sure `VISION_MODEL` is listed in
 Sentia's `SENTIA_MODELS`. Open Luna Visia at
-<http://127.0.0.1:18501>. After signing in,
+<http://127.0.0.1:18505>. After signing in,
 the Hidden Images tab asks for your hidden-items PIN, which you set once in Luna Sentia
 at `/pin` for Visia, Lexia, and Vibia.
 
@@ -355,7 +355,7 @@ A task that was already open before a new tool was added may need to be reloaded
 ## Database UI
 
 Use [Adminer in Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia#database-ui) at
-<http://127.0.0.1:19080>. It reaches every Luna database over the shared private
+<http://127.0.0.1:19000>. It reaches every Luna database over the shared private
 `luna_sentia_network`; the database port itself remains unavailable from the host. Use:
 
 - System: `PostgreSQL`
