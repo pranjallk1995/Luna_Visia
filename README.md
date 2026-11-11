@@ -240,7 +240,7 @@ openssl rand -hex 32
 
 `*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `UI_PUBLIC_URL` is the address of the web UI, which the `get_ui_link` tool gives out.
-`MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18004`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
+`MCP_PUBLIC_URL` is optional and defaults to `http://localhost:18005`; set it to your public HTTPS origin when the server is exposed (plain HTTP is accepted only for localhost).
 leave it blank when stable public image URLs are not needed.
 
 ### Sign-in
@@ -268,9 +268,9 @@ docker compose up --build
 Open:
 
 - UI: <http://127.0.0.1:18505>
-- Service health: <http://127.0.0.1:18004/health>
-- Favicon and icons: <http://127.0.0.1:18004/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
-- MCP endpoint: <http://127.0.0.1:18004/mcp> (clients sign in; see Connecting an MCP client)
+- Service health: <http://127.0.0.1:18005/health>
+- Favicon and icons: <http://127.0.0.1:18005/favicon.ico> and `/icons/icon-{48,96,192,512}.png`; the 48 and 96 px icons are also embedded in the MCP `initialize` server info so connector clients such as Claude can show them.
+- MCP endpoint: <http://127.0.0.1:18005/mcp> (clients sign in; see Connecting an MCP client)
 
 The example keeps these development defaults:
 

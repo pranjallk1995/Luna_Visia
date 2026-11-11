@@ -276,7 +276,7 @@ class PublicURLTests(VisiaServiceTestCase):
 
     def test_public_base_url_rejects_non_https_values(self):
         with self.assertRaises(ValueError):
-            self.service.urls.update("http://localhost:18004/vault")
+            self.service.urls.update("http://localhost:18005/vault")
 
 
 class RenameAndRemoveTests(VisiaServiceTestCase):

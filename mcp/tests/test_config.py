@@ -19,7 +19,7 @@ class McpPublicUrlTests(unittest.TestCase):
         self.assertEqual(config_with(MCP_PUBLIC_URL="https://mcp.example.com/").mcp_public_url, "https://mcp.example.com")
 
     def test_plain_http_on_localhost_is_accepted_for_a_start_without_a_tunnel(self) -> None:
-        for url in ("http://localhost:18004", "http://127.0.0.1:18004"):
+        for url in ("http://localhost:18005", "http://127.0.0.1:18005"):
             self.assertEqual(config_with(MCP_PUBLIC_URL=url).mcp_public_url, url)
 
     def test_plain_http_elsewhere_is_refused(self) -> None:
