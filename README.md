@@ -196,6 +196,24 @@ React UI (through its gateway) or MCP client
 
 The UI reads original images from `image_data` as read-only. All mutations go through the MCP/API service so file and database changes remain coordinated.
 
+## Quickstart
+
+On one machine you need no `.env`. Clone Visia beside [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia),
+which runs its database, models, and sign-in, then start both:
+
+```sh
+git clone https://github.com/pranjallk1995/Luna_Sentia.git
+git clone https://github.com/pranjallk1995/Luna_Visia.git
+./Luna_Sentia/luna.sh start visia
+```
+
+`start` pulls the release images, starts Sentia and waits until it is healthy, then starts
+Visia. Once both are up, it deletes the images their new ones replaced. Open
+<http://localhost:18505> and sign in as Sentia's owner with one click. To run your
+local code instead, use `./Luna_Sentia/luna.sh start --build visia`. Before giving Visia a
+public address, set your own secrets as described in [Start](#start). Every option of
+`luna.sh` is in [Start everything](https://github.com/pranjallk1995/Luna_Sentia#start-everything).
+
 ## Start
 
 Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until it is healthy. Sentia runs
