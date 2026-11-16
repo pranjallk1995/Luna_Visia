@@ -160,7 +160,7 @@ In the code, `mcp/app/core/tenancy.py` holds who the current request or job acts
 
 Every Luna app but Luna Socia is a React UI plus a FastMCP service on Luna Sentia's
 `luna_sentia_network`; Socia, the owner's chat with Luna, is one service with no MCP
-server. Each app's data lives in Sentia's PostgreSQL, people sign in through Sentia's
+server of its own. Each app's data lives in Sentia's PostgreSQL, people sign in through Sentia's
 `auth`, and model calls go through Sentia's model monitor, which times each one, samples
 the GPU and keeps Socia's chat model resident, to its Ollama. Socia's pictures come from
 Sentia's ComfyUI, which takes turns with Ollama on the GPU. Visia's SigLIP 2, Vibia's CLAP
@@ -170,7 +170,9 @@ for Lumia, and cover art for Vibia. Grey dashed lines are planned: links into Fi
 details from Lexia, transaction image and icon URLs from Visia). Luna Unia is the one home
 for the other apps, on port 42069: it checks which Luna stacks are running and opens each
 one with the shared sign-in. The purple line is the mood and beats of the track Vibia
-plays, which Lumia's lights follow.
+plays, which Lumia's lights follow. The green line is Socia using every app's MCP tools,
+and Sentia's, as the owner: it signs in to them with OAuth like any MCP client, so Luna can
+play music, dim the lights or find a photo from the chat.
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
