@@ -5,6 +5,14 @@ runs use Visia's own prompt, image preparation, JSON schema and settings; only t
 differs, and nothing is written to the database. Results hold the gallery's captions and
 are kept out of git in `results/` (see `.gitignore`).
 
+## Last evaluation
+
+`results/2026-11-19_qwen3-vl-vs-qwen3-vl-abliterated/`: `qwen3-vl:8b-instruct` against
+`huihui_ai/qwen3-vl-abliterated:8b-instruct` on 244 images: SigLIP caption match 0.1725 → 0.1711 (42 captions better, 47 worse), no failures, no captions outside English, 1.8 s an image. **Adopted**: about
+even here and better on Lexia's documents, so one vision model, the one Luna Socia uses for
+photos, now serves every app. `results/2026-11-10_qwen3-vl-vs-qwen3.5-9b/` compared
+`qwen3.5:9b`, which was not adopted.
+
 ## What is scored
 
 | Measure | What it shows |
@@ -27,7 +35,7 @@ C=luna_visia-mcp-1
 docker exec $C mkdir -p /tmp/visia_eval
 docker cp model_evaluations/run.py $C:/tmp/visia_eval/
 docker cp model_evaluations/score.py $C:/tmp/visia_eval/
-docker exec -e PYTHONPATH=/workspace/mcp $C python /tmp/visia_eval/run.py old qwen3-vl:8b-instruct /tmp/visia_eval/old.jsonl
+docker exec -e PYTHONPATH=/workspace/mcp $C python /tmp/visia_eval/run.py old huihui_ai/qwen3-vl-abliterated:8b-instruct /tmp/visia_eval/old.jsonl
 docker exec -e PYTHONPATH=/workspace/mcp $C python /tmp/visia_eval/run.py new <model> /tmp/visia_eval/new.jsonl
 docker exec -e PYTHONPATH=/workspace/mcp $C python /tmp/visia_eval/score.py /tmp/visia_eval
 docker cp $C:/tmp/visia_eval model_evaluations/results/<date>_<old>-vs-<new>

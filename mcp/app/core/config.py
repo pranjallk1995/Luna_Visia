@@ -120,7 +120,7 @@ class AppConfig:
         parsed = urlparse(ollama_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise RuntimeError("OLLAMA_URL must be a valid HTTP(S) URL.")
-        vision_model = os.getenv("VISION_MODEL", "qwen3-vl:8b-instruct").strip()
+        vision_model = os.getenv("VISION_MODEL", "huihui_ai/qwen3-vl-abliterated:8b-instruct").strip()
         if not vision_model:
             raise RuntimeError("VISION_MODEL cannot be blank.")
         image_dir = Path(os.getenv("IMAGE_DIR", "/data/images"))

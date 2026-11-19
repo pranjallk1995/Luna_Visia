@@ -24,7 +24,7 @@ searchable tags, and stores that metadata in PostgreSQL. FastMCP makes the index
 collection available to AI assistants of your choice (ChatGPT here) for fast search and safe image-management
 operations without repeatedly opening every original image.
 
-> **Requires Luna Sentia, running and healthy:** Luna Visia keeps its data in Luna Sentia's PostgreSQL (`luna-sentia-db`) and joins Sentia's `luna_sentia_network`; it has no database of its own. Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until its `postgres` and `ollama` services report healthy, as described under [Start](#start). Sentia also serves the model: Visia uses `qwen3-vl:8b-instruct` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
+> **Requires Luna Sentia, running and healthy:** Luna Visia keeps its data in Luna Sentia's PostgreSQL (`luna-sentia-db`) and joins Sentia's `luna_sentia_network`; it has no database of its own. Start [Luna Sentia](https://github.com/pranjallk1995/Luna_Sentia) first and wait until its `postgres` and `ollama` services report healthy, as described under [Start](#start). Sentia also serves the model: Visia uses `huihui_ai/qwen3-vl-abliterated:8b-instruct` by default, a download larger than 6 GB that needs an NVIDIA GPU with at least 8 GB of VRAM in Sentia's default configuration; see [Vision model](#vision-model) to choose another model.
 
 <p align="center">
   <img src="docs/assets/luna-visia-ai-assistant.png" alt="AI assistant querying Luna Visia alongside its image gallery" width="900">
@@ -99,7 +99,7 @@ through natural-language requests.
 
 | Part | Model | Where it runs | Before changing it |
 | --- | --- | --- | --- |
-| Captions and tags | `VISION_MODEL` (default `qwen3-vl:8b-instruct`), 16k context | Sentia's Ollama, on the GPU | Compare it on every stored image with [`model_evaluations/`](model_evaluations/README.md); afterwards `backfill_metadata` re-analyzes images made by another model |
+| Captions and tags | `VISION_MODEL` (default `huihui_ai/qwen3-vl-abliterated:8b-instruct`), 16k context | Sentia's Ollama, on the GPU | Compare it on every stored image with [`model_evaluations/`](model_evaluations/README.md); afterwards `backfill_metadata` re-analyzes images made by another model |
 | Meaning search | SigLIP 2 (`google/siglip2-base-patch16-224`, `EMBEDDING_MODEL` in `mcp/app/core/config.py`) | Here, on the GPU only, in its own process | Pinned in the image; after a change `backfill_metadata` re-embeds every image made by another model |
 
 `VISION_MODEL` must be in Sentia's `SENTIA_MODELS`; Sentia's
@@ -148,9 +148,8 @@ In the code, `mcp/app/core/tenancy.py` holds who the current request or job acts
 
 | Model | Served by | Used by | Before changing it |
 | --- | --- | --- | --- |
-| `qwen3-vl:8b-instruct` | Ollama | Lexia (`DOCUMENT_MODEL`), Visia (`VISION_MODEL`), Vibia (`CAPTION_MODEL`), Fiora (`OLLAMA_MODEL`) | `model_checks/check_model.py`, then Lexia's, Visia's and Vibia's `model_evaluations/` |
+| `huihui_ai/qwen3-vl-abliterated:8b-instruct` (Qwen3-VL 8B, uncensored) | Ollama, at 16k context for every app; in Socia's chat model's place while Luna looks at a photo | Lexia (`DOCUMENT_MODEL`), Visia (`VISION_MODEL`), Vibia (`CAPTION_MODEL`), Fiora (`OLLAMA_MODEL`), Socia's photo replies (`LUNASOCIA_VISION_MODEL`) | `model_checks/check_model.py`, then Lexia's, Visia's and Vibia's `model_evaluations/` and Socia's cat game |
 | `huihui_ai/qwen3-abliterated:8b` (Qwen3 8B, uncensored) | Ollama, resident at `SENTIA_RESIDENT_CONTEXT` | Socia's chat (`LUNASOCIA_CHAT_MODEL`) | `model_checks/check_model.py --context 8192`, then Socia's `model_evaluations/` |
-| `huihui_ai/qwen3-vl-abliterated:8b-instruct` (Qwen3-VL 8B, uncensored) | Ollama, in the chat model's place while Luna looks at a photo | Socia's photo replies (`LUNASOCIA_VISION_MODEL`) | Socia's cat game, then a few photos by hand |
 | `qwen3-embedding:0.6b` | Ollama | Lexia's semantic search (`EMBEDDING_MODEL`) | Re-embed with Lexia's `reindex_semantic_search` |
 | Qwen-Image 2.1 Turbo | ComfyUI | Socia's pictures of Luna | A few pictures by hand |
 | SigLIP 2 (`google/siglip2-base-patch16-224`) | Visia itself, GPU only | Visia's meaning search | Pinned in Visia's image; `backfill_metadata` re-embeds |
@@ -182,7 +181,7 @@ play music, dim the lights or find a photo from the chat.
 | UI | React + TypeScript (Vite), served by a Starlette gateway | Upload, search, galleries, Favorites, downloads, bulk actions, and authenticated hidden-image workflows |
 | HTTP and MCP | FastMCP + Starlette routes | Assistant tools plus UI-facing image, metadata, Favorites, and hidden-vault endpoints |
 | Image service | Python + Pillow | Validated ingestion, previews, ZIP delivery, safe file operations, and metadata coordination |
-| Vision | Ollama in Luna Sentia | Local caption and tag generation with `qwen3-vl:8b-instruct` by default |
+| Vision | Ollama in Luna Sentia | Local caption and tag generation with `huihui_ai/qwen3-vl-abliterated:8b-instruct` by default |
 | Image embeddings | SigLIP 2 (`google/siglip2-base-patch16-224`) in the MCP container, GPU only | 768-number embeddings for similarity ordering, other apps, and future search; not served by Ollama |
 | Database | PostgreSQL 17 in Luna Sentia (`luna-sentia-db`) | Metadata, SigLIP embeddings (pgvector), full-text search indexes, Favorites, hidden state, configuration, and credential hashes |
 | Storage | Docker volumes | Original images; the database and Ollama models live in Luna Sentia's volumes |
@@ -255,7 +254,7 @@ To change them, create a private `.env`:
 ```dotenv
 # Must equal LUNAVISIA_DB_PASSWORD in Luna_Sentia/.env
 POSTGRES_PASSWORD=replace-with-a-private-database-password
-VISION_MODEL=qwen3-vl:8b-instruct
+VISION_MODEL=huihui_ai/qwen3-vl-abliterated:8b-instruct
 LUNAVISIA_PUBLIC_BASE_URL=
 LUNAVISIA_API_TOKEN=replace-with-a-random-value-of-at-least-32-characters
 LUNAVISIA_ALLOWED_EMAILS=*
@@ -334,8 +333,9 @@ If NVIDIA passthrough is unavailable, remove `gpus: all` from the Ollama service
 
 ## Vision model
 
-The default model is `qwen3-vl:8b-instruct`, the model Lexia and Fiora also use, so
-Ollama keeps one model loaded for all of them. Use the `-instruct` tag: plain
+The default model is `huihui_ai/qwen3-vl-abliterated:8b-instruct`, an uncensored Qwen3-VL 8B and the
+model Lexia, Vibia, Fiora and Luna Socia's photos also use, so Ollama keeps one model loaded
+for all of them. Use the `-instruct` tag: plain
 `qwen3-vl:8b` is the thinking variant, which reasons at length before every reply
 and ignores the JSON format Visia asks for. Each image records the model that
 analyzed it (`analysis_model`, shown as "Analyzed by" in the preview); after
@@ -347,7 +347,7 @@ Vision 11B:
 
 ```dotenv
 # Luna_Sentia/.env
-SENTIA_MODELS=qwen3-vl:8b-instruct qwen3-embedding:0.6b llama3.2-vision:11b
+SENTIA_MODELS=qwen3-embedding:0.6b huihui_ai/qwen3-abliterated:8b huihui_ai/qwen3-vl-abliterated:8b-instruct llama3.2-vision:11b
 
 # Luna_Visia/.env
 VISION_MODEL=llama3.2-vision:11b
