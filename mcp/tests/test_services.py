@@ -719,3 +719,104 @@ class StarterLibraryTests(unittest.TestCase):
             self.assertEqual((original.read_bytes(), copy.read_bytes()), (b"original", b"changed"))
             copy.unlink()
             self.assertEqual(original.read_bytes(), b"original")
+
+
+class StarterPackTests(unittest.TestCase):
+    """The pack a fresh install loads, with the database faked."""
+
+    class Connection:
+        def __init__(self) -> None:
+            self.inserted: list[dict] = []
+            self.state = None
+
+        def execute(self, query, params=None):
+            from unittest import mock
+
+            result = mock.Mock()
+            if "vault_config" in query:
+                result.fetchone.return_value = {"public_base_url": "https://visia.example"}
+            elif query.lstrip().startswith("INSERT INTO image_metadata"):
+                self.inserted.append(params)
+                result.fetchone.return_value = {"name": params["name"]}
+            elif query.lstrip().startswith("UPDATE starter_pack"):
+                self.state = params[0]
+            return result
+
+    def pack(self, directory: Path, images: dict[str, bytes], manifest: dict | None = None) -> Path:
+        import hashlib
+        import json
+        import zipfile
+
+        path = directory / "pack.zip"
+        entries = [
+            {"name": name, "size_bytes": len(data), "content_sha256": hashlib.sha256(data).hexdigest(),
+             "caption": "a dish", "tags": ["food", "ai info"], "analysis_model": "m", "showcase_rank": None,
+             "embedding": "[0.5,0.5]", "embedding_model": "siglip"}
+            for name, data in images.items()
+        ]
+        with zipfile.ZipFile(path, "w") as archive:
+            for name, data in images.items():
+                archive.writestr("images/" + name, data)
+            archive.writestr("manifest.json", json.dumps(manifest or {"app": "visia", "format": 1, "images": entries}))
+        return path
+
+    def starter_pack(self, root: Path):
+        from contextlib import contextmanager
+        from unittest import mock
+
+        from app.services.starter_pack import StarterPack
+
+        connection = self.Connection()
+        database = mock.Mock()
+
+        @contextmanager
+        def connect():
+            yield connection
+
+        database.connect = connect
+        return StarterPack(database, root, {".png"}), connection
+
+    def test_no_url_means_no_pack(self) -> None:
+        from unittest import mock
+
+        from app.services.starter_pack import StarterPack
+
+        database = mock.Mock()
+        self.assertFalse(StarterPack(database, Path("/nowhere"), {".png"}).decide(""))
+        database.connect.assert_not_called()
+
+    def test_loads_matching_images_as_the_owners_starters(self) -> None:
+        import hashlib
+        import json
+        import zipfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = self.pack(root, {"Dosa.png": b"dosa", "Idli.png": b"idli"})
+            # Tamper with one file after the manifest was written.
+            with zipfile.ZipFile(path) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+            manifest["images"].append(
+                {"name": "../escape.png", "content_sha256": hashlib.sha256(b"x").hexdigest()}
+            )
+            manifest["images"][1]["content_sha256"] = hashlib.sha256(b"other").hexdigest()
+            path = self.pack(root, {"Dosa.png": b"dosa", "Idli.png": b"idli"}, manifest)
+            pack, connection = self.starter_pack(root / "images")
+            self.assertEqual(pack.load(path), 1)
+            self.assertEqual([row["name"] for row in connection.inserted], ["Dosa.png"])
+            row = connection.inserted[0]
+            self.assertTrue(row["public_url"].startswith("https://visia.example/api/public/images/"))
+            self.assertEqual(row["embedding"], "[0.5,0.5]")
+            self.assertEqual((root / "images" / "u_owner" / "Dosa.png").read_bytes(), b"dosa")
+            self.assertFalse((root / "images" / "u_owner" / "Idli.png").exists())
+            self.assertFalse((root / "escape.png").exists())
+            self.assertEqual(connection.state, "loaded")
+
+    def test_refuses_another_apps_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = self.pack(root, {}, {"app": "vibia", "format": 1, "tracks": []})
+            pack, connection = self.starter_pack(root / "images")
+            with self.assertRaises(ValueError):
+                pack.load(path)
+            self.assertIsNone(connection.state)

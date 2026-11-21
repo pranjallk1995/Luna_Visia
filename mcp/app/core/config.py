@@ -109,6 +109,8 @@ class AppConfig:
     )
     # Public HTTPS origin of this MCP server, used for icon URLs ("" = embedded icons only).
     mcp_public_url: str = ""
+    # Where a fresh install downloads its starter images ("" = start with an empty gallery).
+    starter_pack_url: str = ""
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -155,8 +157,12 @@ class AppConfig:
             local = parsed_public_url.scheme == "http" and parsed_public_url.hostname in cls.LOCAL_HOSTS
             if not (parsed_public_url.scheme == "https" or local) or not parsed_public_url.netloc:
                 raise RuntimeError("MCP_PUBLIC_URL must be an HTTPS URL, or HTTP on localhost.")
+        starter_pack_url = os.getenv("LUNAVISIA_STARTER_PACK_URL", "").strip()
+        if starter_pack_url and urlparse(starter_pack_url).scheme not in {"http", "https"}:
+            raise RuntimeError("LUNAVISIA_STARTER_PACK_URL must be an HTTP(S) URL, or blank.")
         return cls(
             mcp_public_url=mcp_public_url,
+            starter_pack_url=starter_pack_url,
             image_dir=image_dir,
             database_url=database_url,
             ollama_url=ollama_url,

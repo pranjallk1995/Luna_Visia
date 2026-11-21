@@ -135,6 +135,23 @@ Everyone starts with the images the owner has chosen, as their own copy in their
 
 The owner chooses with the `set_starter_images` MCP tool. Everyone gets chosen images straight away, including people who joined earlier.
 
+### Starter pack
+
+A fresh install begins with 215 AI-generated images: dishes, drinks, rooms, city skylines, the Luna app icons, and Luna Vibia's cover art. On its first start, Visia downloads them from this repository's [`starter-pack-v1` release](https://github.com/pranjallk1995/Luna_Visia/releases/tag/starter-pack-v1) (about 470 MB) and adds them to the owner's gallery as starter images, so everyone who signs in gets them too. They arrive with their captions, tags and SigLIP 2 embeddings, so search and meaning search work at once, without the vision model looking at each one. The gallery is usable meanwhile.
+
+- It loads once. An install that already had images when it first started with this version never loads it, and neither does one that has loaded it before, even after the images are deleted.
+- A download that fails is tried again, up to ten times a minute apart, then on the next start.
+- Set `LUNAVISIA_STARTER_PACK_URL` blank in `.env` to start with an empty gallery, or point it at a pack of your own.
+
+The pack holds the owner's starter images that Visia found AI-made (tagged `ai info`) or that are cover art; any other starter image, such as a photo of a person, stays out, because the pack is public. To make one from your own starter images:
+
+```bash
+docker compose exec mcp python -m app.services.starter_pack export /data/downloads/luna-visia-starter-pack.zip
+docker compose cp mcp:/data/downloads/luna-visia-starter-pack.zip .
+```
+
+The code is in `mcp/app/services/starter_pack.py`.
+
 In the code, `mcp/app/core/tenancy.py` holds who the current request or job acts for, `mcp/app/data/tenants.py` creates and removes each person's schema, and `mcp/app/transport/luna_mcp.py` checks connector tokens and the private token on `/api/` routes. Code that does not say who it acts for raises `NoUserError` rather than reading anyone's data.
 
 ## Architecture
@@ -265,7 +282,7 @@ LUNAVISIA_ALLOWED_EMAILS=*
 openssl rand -hex 32
 ```
 
-`LUNAVISIA_COMPANION_TOKEN` is optional. When it is set, Luna Vita and Luna Vibia can store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Use one random value, set the same in all three apps' `.env` files. Leave it empty to turn the route off.
+`LUNAVISIA_COMPANION_TOKEN` lets Luna Vita and Luna Vibia store generated images here, such as food images and cover art. They send it as a bearer token to `POST /api/companion/images`, with one source (`image_url`, `content_base64`, or a chat `file`) plus an optional `name` and `tags`. Visia stores and captions the image, or returns the copy it already has for identical bytes, and answers with its stable `public_url`. Its default works on localhost, and `luna.sh` refuses to start an app with a public (https) address while it is still in use; then set one random value, the same in Visia's, Vita's, Vibia's and Lumia's `.env` files.
 
 `*` allows everyone with a Luna account; otherwise separate accounts with commas. `LUNAVISIA_PUBLIC_BASE_URL` is optional;
 `UI_PUBLIC_URL` is the address of the web UI, which the `get_ui_link` tool gives out.

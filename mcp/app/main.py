@@ -1,5 +1,7 @@
 """Compose and run the Luna Visia MCP and HTTP server."""
 
+import threading
+
 import uvicorn
 
 from app.transport.branding import ServerBranding
@@ -16,6 +18,7 @@ from app.data.repositories import ImageRepository, PublicURLRepository
 from app.integrations.embeddings import IdleSiglipEmbedder
 from app.services.application import VisiaService
 from app.services.starter import StarterLibrary
+from app.services.starter_pack import StarterPack
 from app.integrations.vision import OllamaVisionAnalyzer
 
 
@@ -43,6 +46,15 @@ class LunaVisiaApplication:
         self.database.tenants.after_create = self.prepare_person
         # Anyone who joined earlier gets images chosen since.
         self.service.starter.deliver_to_everyone()
+        # A fresh install begins with the published starter images (see starter_pack.py).
+        pack = StarterPack(self.database, config.image_dir, set(config.allowed_formats))
+        if pack.decide(config.starter_pack_url):
+            threading.Thread(
+                target=pack.load_in_background,
+                args=(config.starter_pack_url, self.service.starter.deliver_to_everyone),
+                name="starter-pack",
+                daemon=True,
+            ).start()
         self.branding = ServerBranding(config.mcp_public_url)
         self.mcp = LunaMCP(
             "Luna Visia",

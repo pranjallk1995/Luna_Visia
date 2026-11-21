@@ -19,7 +19,9 @@ services:
       UI_PUBLIC_URL: ${UI_PUBLIC_URL:-http://localhost:18505}
       LUNAVISIA_API_TOKEN: ${LUNAVISIA_API_TOKEN:-lunavisia-dev-token-for-localhost-only}
       # Lets Luna Vita and Luna Vibia store new images here (the same value in all three).
-      LUNAVISIA_COMPANION_TOKEN: ${LUNAVISIA_COMPANION_TOKEN:-}
+      LUNAVISIA_COMPANION_TOKEN: ${LUNAVISIA_COMPANION_TOKEN:-lunavisia-companion-dev-token-for-localhost-only}
+      # A fresh install begins with the published starter images; set it blank to start empty.
+      LUNAVISIA_STARTER_PACK_URL: ${LUNAVISIA_STARTER_PACK_URL-https://github.com/pranjallk1995/Luna_Visia/releases/download/starter-pack-v1/luna-visia-starter-pack.zip}
     expose:
       - "8000"
     ports:

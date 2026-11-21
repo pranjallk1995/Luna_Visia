@@ -923,7 +923,8 @@ class VisiaService:
         rules = MetadataRules(config.max_tags, config.search_stop_words)
         storage = ImageStorage(config.image_dir, set(config.allowed_formats))
         urls = PublicURLService(public_urls)
-        urls.seed(config.public_base_url)
+        # Public links are served by this backend, so without a set address they start at it.
+        urls.seed(config.public_base_url or config.mcp_public_url)
         inspector = ImageInspector()
         indexer = ImageIndexer(storage, images, analyzer, urls, inspector, rules, embedder)
         showcase = ShowcaseSorter(images)
