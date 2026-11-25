@@ -77,7 +77,7 @@ through natural-language requests.
 - Download individual images, or have an LLM package selected originals into a ZIP and return a short-lived download link.
 - Rename images safely while keeping filenames, metadata, and generated URLs synchronized.
 - Edit captions and tags without rerunning vision analysis.
-- Select many images in the web UI (**Select**, then click, shift-click a range, or **Select all**, across pages and searches) to favorite, unfavorite, hide, restore, or delete them together, or to correct them together: add and remove tags, find and replace text in descriptions, or give them all one description. Images that could not be changed are reported and stay selected.
+- Select many images in the web UI (**Select**, then click, shift-click a range, or **Select all**, across pages and searches) to favorite, unfavorite, hide, restore, download, or delete them together, or to correct them together: add and remove tags, find and replace text in descriptions, or give them all one description. Images that could not be changed are reported and stay selected. **Download** saves the selection as one ZIP (`Luna-Visia-<n>-images.zip`, up to 1,000 images, each under its own name); hidden images go into it only while the hidden items are unlocked.
 - Delete image files and their metadata together.
 
 ### Favorites and hidden images
@@ -464,7 +464,7 @@ Hidden Images routes are UI-only. Like every `/api/` route except public, downlo
 and upload links, they need the private `LUNAVISIA_API_TOKEN` and name the person in
 `X-Luna-User`. Hidden images are not exposed as MCP tools.
 
-The web UI's bulk actions send at most 100 images per request to `POST /api/images/delete`, `/api/images/metadata`, `/api/hidden/delete`, and `/api/hidden/images/metadata`. Each image is applied on its own: results come back under `removed` or `updated`, and per-image errors under `failed`. Favorites, hiding, and restoring reuse `POST /api/favorites` and `/api/hidden/hide` and `/restore`.
+The web UI's bulk actions send at most 100 images per request to `POST /api/images/delete`, `/api/images/metadata`, `/api/hidden/delete`, and `/api/hidden/images/metadata`. Each image is applied on its own: results come back under `removed` or `updated`, and per-image errors under `failed`. Favorites, hiding, and restoring reuse `POST /api/favorites` and `/api/hidden/hide` and `/restore`. Downloading a selection is the gateway's own `POST /app/download` (a form field `names`, a JSON list), which reads the files from the vault and answers with a ZIP.
 
 ## Metadata and search
 

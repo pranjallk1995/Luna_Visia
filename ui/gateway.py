@@ -7,16 +7,21 @@ uses are forwarded.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import tempfile
+import zipfile
 from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 import anyio
 import httpx
 from PIL import UnidentifiedImageError
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
@@ -51,6 +56,29 @@ BATCH_ROUTES = re.compile(r"/api/(favorites|images/(delete|metadata)|hidden/(hid
 HIDDEN_CHANGES = re.compile(r"/api/hidden/(?!hide\Z).+")
 SENTIA_AWAY = "Luna Sentia, which checks your PIN, is unavailable. Please try again."
 UNAVAILABLE = "Luna Visia's backend is unavailable. Please try again."
+UPLOAD_PREFIX = re.compile(r"[0-9a-f]{32}_(.+)", re.IGNORECASE)
+
+
+def display_name(name: str) -> str:
+    """The name people know a file by: without the upload prefix (as the browser app's displayName)."""
+    match = UPLOAD_PREFIX.fullmatch(name)
+    return match.group(1) if match else name
+
+
+def zip_names(names: list[str]) -> list[str]:
+    """Each image's name in the ZIP: its display name, numbered when two would be the same."""
+    used: set[str] = set()
+    out = []
+    for name in names:
+        shown = display_name(name)
+        stem, dot, suffix = shown.rpartition(".")
+        stem, suffix = (stem, dot + suffix) if dot else (shown, "")
+        candidate, number = shown, 2
+        while candidate.lower() in used:
+            candidate, number = f"{stem} ({number}){suffix}", number + 1
+        used.add(candidate.lower())
+        out.append(candidate)
+    return out
 
 
 class StaticApp(StaticFiles):
@@ -181,6 +209,55 @@ class UIGateway:
         serve = partial(FileResponse, path, headers={"Cache-Control": UIConfig.IMMUTABLE_CACHE_CONTROL})
         return serve(filename=download) if download else serve()
 
+    async def download(self, request: Request) -> Response:
+        """The chosen images in one ZIP, from a form post of ``names`` (a JSON list). A hidden image comes along
+        only while the hidden items are unlocked; anything not in the vault is left out."""
+        origin = request.headers.get("origin")
+        if origin and urlsplit(origin).netloc != urlsplit(self.here(request)).netloc:
+            return JSONResponse({"error": "Downloads start from Luna Visia itself."}, status_code=403)
+        try:
+            names = json.loads(parse_qs((await request.body()).decode())["names"][0])
+            if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+                raise ValueError
+        except (KeyError, ValueError, UnicodeDecodeError):
+            return JSONResponse({"error": "Send the image names to download."}, status_code=400)
+        names = list(dict.fromkeys(names))[: UIConfig.DOWNLOAD_MAX_IMAGES]
+        if not self.pin.is_unlocked(self.token(request)):
+            try:
+                hidden = await self.pin.hidden_names(signed_in_user(), self.hidden_set)
+            except httpx.HTTPError:
+                return JSONResponse({"error": UNAVAILABLE}, status_code=502)
+            names = [name for name in names if name not in hidden]
+        paths = []
+        for name in names:
+            try:
+                paths.append(self.files.path(name))
+            except FileNotFoundError:
+                continue
+        if not paths:
+            return JSONResponse({"error": "None of those images could be found."}, status_code=404)
+        archive = await anyio.to_thread.run_sync(self.archive, paths)
+        return FileResponse(
+            archive,
+            media_type="application/zip",
+            filename=f"Luna-Visia-{len(paths)}-images.zip",
+            headers={"Cache-Control": "private, no-store"},
+            background=BackgroundTask(os.unlink, archive),
+        )
+
+    @staticmethod
+    def archive(paths: list) -> str:
+        """A ZIP of ``paths`` in a temporary file; images are compressed already, so they are stored as they are."""
+        handle, archive = tempfile.mkstemp(prefix="visia-download-", suffix=".zip")
+        try:
+            with os.fdopen(handle, "wb") as file, zipfile.ZipFile(file, "w", zipfile.ZIP_STORED) as bundle:
+                for path, name in zip(paths, zip_names([path.name for path in paths])):
+                    bundle.write(path, name)
+        except BaseException:
+            os.unlink(archive)
+            raise
+        return archive
+
     # Hidden items
 
     @staticmethod
@@ -301,6 +378,7 @@ class UIGateway:
                 Route("/app/hidden", self.protected(self.unlocked_only(self.collection("/api/hidden/images")))),
                 Route("/app/thumbnails/{name}", self.protected(self.guarded(self.thumbnail))),
                 Route("/app/files/{name}", self.protected(self.guarded(self.file))),
+                Route("/app/download", self.protected(self.download), methods=["POST"]),
                 Route("/api/{path:path}", self.protected(self.proxy), methods=["POST", "DELETE", "GET"]),
                 Mount("/", StaticApp(directory=UIConfig.STATIC_DIR, html=True, check_dir=False)),
             ]

@@ -1,24 +1,25 @@
-import { Eye, EyeOff, Heart, HeartOff, Pencil, Trash2, type LucideIcon } from "lucide-react";
+import { Download, Eye, EyeOff, Heart, HeartOff, Pencil, Trash2, type LucideIcon } from "lucide-react";
 
 import type { ImageRecord, Section } from "../api";
 import { imageCount } from "../lib";
 
-export type BulkAction = "favorite" | "unfavorite" | "hide" | "restore" | "edit" | "delete";
+export type BulkAction = "favorite" | "unfavorite" | "hide" | "restore" | "download" | "edit" | "delete";
 
 const LABELS: Record<BulkAction, { label: string; icon: LucideIcon }> = {
   favorite: { label: "Favorite", icon: Heart },
   unfavorite: { label: "Unfavorite", icon: HeartOff },
   hide: { label: "Hide", icon: EyeOff },
   restore: { label: "Restore", icon: Eye },
+  download: { label: "Download", icon: Download },
   edit: { label: "Edit tags & text", icon: Pencil },
   delete: { label: "Delete", icon: Trash2 },
 };
 
 // The same choices each section's cards offer.
 const ACTIONS: Record<Section, BulkAction[]> = {
-  view: ["favorite", "unfavorite", "hide", "edit", "delete"],
-  favorites: ["unfavorite", "edit", "delete"],
-  hidden: ["restore", "edit", "delete"],
+  view: ["favorite", "unfavorite", "hide", "download", "edit", "delete"],
+  favorites: ["unfavorite", "download", "edit", "delete"],
+  hidden: ["restore", "download", "edit", "delete"],
 };
 
 type Props = {

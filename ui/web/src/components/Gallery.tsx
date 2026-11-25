@@ -2,6 +2,7 @@ import { CheckSquare, EyeOff, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  downloadImages,
   thumbnailUrl,
   useImageActions,
   useImages,
@@ -13,6 +14,7 @@ import {
 import {
   clickedSelection,
   displayName,
+  imageCount,
   inSection,
   matching,
   messageOf,
@@ -135,6 +137,10 @@ export function Gallery({ section, layout, settings }: Props) {
         .mutateAsync(selectedNames)
         .then((outcome) => report(outcome, "restored"))
         .catch((failure) => toast(messageOf(failure, "Could not restore the images.")));
+    }
+    if (action === "download") {
+      downloadImages(selectedNames);
+      return toast(`Downloading ${imageCount(selectedNames.length)} as one ZIP.`);
     }
     if (action === "edit") return setBulkPending({ kind: "edit" });
     // A destructive prompt names what the search is not showing, so nothing goes unnoticed.

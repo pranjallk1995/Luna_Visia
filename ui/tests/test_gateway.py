@@ -1,4 +1,6 @@
+import io
 import json
+import zipfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -183,6 +185,40 @@ class FileTests(GatewayTestCase):
         self.sign_in()
         (self.image_dir / "notes.txt").write_text("private")
         self.assertEqual(self.client.get("/app/files/notes.txt").status_code, 404)
+
+
+class DownloadTests(GatewayTestCase):
+    def download(self, names, **headers):
+        return self.client.post("/app/download", data={"names": json.dumps(names)}, headers=headers)
+
+    def test_the_chosen_images_arrive_as_one_zip_under_their_names(self):
+        self.sign_in()
+        prefixed = "0123456789abcdef0123456789abcdef_a.png"
+        (self.image_dir / prefixed).write_bytes((self.image_dir / "a.png").read_bytes())
+        response = self.download(["a.png", "b b.png", prefixed, "missing.png", "../secret.png"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/zip")
+        self.assertIn("Luna-Visia-3-images.zip", response.headers["content-disposition"])
+        with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+            self.assertEqual(bundle.namelist(), ["a.png", "b b.png", "a (2).png"])
+            self.assertEqual(bundle.read("b b.png"), (self.image_dir / "b b.png").read_bytes())
+
+    def test_hidden_images_come_along_only_while_unlocked(self):
+        self.hidden = {"a.png"}
+        self.sign_in()
+        with zipfile.ZipFile(io.BytesIO(self.download(["a.png", "b b.png"]).content)) as bundle:
+            self.assertEqual(bundle.namelist(), ["b b.png"])
+        self.assertEqual(self.download(["a.png"]).status_code, 404)
+        self.unlock()
+        with zipfile.ZipFile(io.BytesIO(self.download(["a.png", "b b.png"]).content)) as bundle:
+            self.assertEqual(bundle.namelist(), ["a.png", "b b.png"])
+
+    def test_it_needs_sign_in_and_this_sites_own_page(self):
+        self.assertEqual(self.download(["a.png"]).status_code, 401)
+        self.sign_in()
+        self.assertEqual(self.download(["a.png"], origin="https://evil.example.com").status_code, 403)
+        self.assertEqual(self.download(["a.png"], origin="https://visia.example.com").status_code, 200)
+        self.assertEqual(self.client.post("/app/download", data={"names": "nope"}).status_code, 400)
 
 
 class ProxyTests(GatewayTestCase):

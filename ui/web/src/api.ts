@@ -76,6 +76,22 @@ export const fileUrl = (image: ImageRecord) => `/app/files/${segment(image.name)
 export const downloadUrl = (image: ImageRecord, fileName: string) =>
   `${fileUrl(image)}&download=${segment(fileName)}`;
 
+/** Save the images as one ZIP: a form post, so the browser downloads it as it arrives, however large. */
+export function downloadImages(names: string[]) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/app/download";
+  form.hidden = true;
+  const field = document.createElement("input");
+  field.type = "hidden";
+  field.name = "names";
+  field.value = JSON.stringify(names);
+  form.append(field);
+  document.body.append(form);
+  form.submit();
+  form.remove();
+}
+
 export const uploadImage = (name: string, contentBase64: string) =>
   post<ImageRecord>("/api/images", { name, content_base64: contentBase64 });
 

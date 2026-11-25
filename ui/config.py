@@ -63,6 +63,8 @@ class UIConfig:
     FACTS_CACHE_ENTRIES: ClassVar[int] = 4096
     # Thumbnail and file URLs carry the file's modified time, so they never go stale.
     IMMUTABLE_CACHE_CONTROL: ClassVar[str] = "private, max-age=31536000, immutable"
+    # The most images one ZIP download takes: "Select all" in a large gallery, about 2.5 MB each.
+    DOWNLOAD_MAX_IMAGES: ClassVar[int] = 1000
     CONTENT_SECURITY_POLICY: ClassVar[str] = (
         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
         "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
