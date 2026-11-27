@@ -32,6 +32,7 @@ import { Pager } from "./Pager";
 import { PreviewDialog } from "./PreviewDialog";
 import { SearchBox } from "./SearchBox";
 import { useToast } from "./Toasts";
+import { SORTS, rememberSort, rememberedSort, sortItems } from "../sorting";
 
 const COPY: Record<Section, { label: string; noMatch: string }> = {
   view: { label: "Search by image name", noMatch: "No filenames or tags match your search." },
@@ -63,7 +64,8 @@ export function Gallery({ section, layout, settings }: Props) {
   const [bulkPending, setBulkPending] = useState<BulkPending>(null);
 
   const inThisSection = useMemo(() => inSection(data ?? [], section), [data, section]);
-  const filtered = useMemo(() => matching(inThisSection, query), [inThisSection, query]);
+  const [sort, setSort] = useState(() => rememberedSort(SORTS));
+  const filtered = useMemo(() => sortItems(matching(inThisSection, query), SORTS, sort), [inThisSection, query, sort]);
   // Read from the section's images, so anything deleted or moved away drops out by itself.
   const selected = useMemo(() => inThisSection.filter((image) => selection.has(image.name)), [inThisSection, selection]);
   const selectedNames = useMemo(() => selected.map((image) => image.name), [selected]);
@@ -182,6 +184,23 @@ export function Gallery({ section, layout, settings }: Props) {
           <span>{selecting ? "Done" : "Select"}</span>
         </button>
         <SearchBox label={COPY[section].label} value={query} count={data ? filtered.length : undefined} onChange={changeQuery} />
+        <select
+          className="lv-select lv-sort"
+          aria-label="Sort by"
+          title="Sort by"
+          value={sort}
+          onChange={(event) => {
+            setSort(event.target.value);
+            rememberSort(event.target.value);
+            setPage(0);
+          }}
+        >
+          {SORTS.map((option) => (
+            <option value={option.id} key={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
       {error && <p className="lv-alert lv-alert-error">{error.message}</p>}
       {isPending && <div className="lv-skeleton-grid" aria-label="Loading images" />}

@@ -46,7 +46,7 @@ Luna Visia is also well suited to bulk image manipulation and editing workflows.
 Its MCP tools let an AI assistant find and act on groups of images while keeping
 the stored files and their searchable metadata synchronized.
 
-The main gallery provides filename search, pagination, AI-generated captions and
+The main gallery provides filename search, sorting (similarity, date, name, size), pagination, AI-generated captions and
 tags, full-size viewing, downloads, and deletion controls. Persisted Favorites
 provide a focused collection for images you return to often.
 
@@ -457,6 +457,7 @@ Luna Visia exposes these tools to connected MCP clients:
 - `set_favorite_images` - add or remove visible images from Favorites using exact filenames.
 - `search_images` - search filenames, captions, and tags without opening original images; results include `public_url` and `next_offset`, and `include_preview=true` adds a contact sheet of the first 20 results. `exclude_tags` leaves out images carrying those tags and can be the only filter (`exclude_tags=["ai info"]` finds every image not marked as AI-generated). Tag filters must be lowercase too.
 - `semantic_search_images` - find images by meaning: embeds the query with SigLIP 2 and ranks visible images by the cosine similarity of their image embeddings, so "italian food" also finds garlic bread, which no filename, caption, or tag calls Italian. Results are best first with a `similarity` score and no cutoff, so the LLM reads the captions and keeps the real matches, then can pass them to `fetch_images` with `delivery="zip"`. Images without an embedding are skipped until `backfill_metadata` adds one, and it needs the GPU.
+- **Web gallery:** the **Sort** menu beside the search box orders the gallery by similarity (the default, as `sort_images` saved it), newest or oldest, name, file size, or pixels; the browser remembers the choice.
 - `sort_images` - arrange the visible gallery for showcasing: `order="similarity"` saves an order where neighbors look alike, by the cosine similarity of their SigLIP image embeddings, starting from `start` or the newest image. The web gallery, Favorites, and `list_images` follow it. Images added or restored afterwards are slotted in between their most similar neighbors; an occasional full sort tidies the drift. `order="newest"` clears it.
 - `backfill_metadata` - generate missing or stale metadata for imported files, add the `ai info` tag to already-indexed AI-generated images, and embed images that lack a SigLIP embedding.
 
