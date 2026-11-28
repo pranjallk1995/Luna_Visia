@@ -1428,3 +1428,77 @@ html:has(.lv-viewer[open]) {
 /* The gallery's sort order, beside the search box */
 .lv-sort { width: auto; min-width: 10.5rem; flex: 0 0 auto; }
 @media (max-width: 700px) { .lv-sort { min-width: 0; max-width: 9rem; } }
+
+/* Phones: the tabs move to a bar along the bottom, within thumb reach; see UI_STYLE_GUIDE.md, Phone layout */
+@media (max-width: 700px) {
+  .lv-page {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+
+  .lv-nav {
+    position: fixed;
+    z-index: 30;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    gap: 0.1rem;
+    margin: 0;
+    padding: 0.3rem 0.35rem calc(0.3rem + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
+    background: rgba(17, 17, 17, 0.94);
+    backdrop-filter: blur(12px);
+  }
+
+  .lv-nav-item,
+  .lv-nav-item:hover {
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    min-height: 3.2rem;
+    padding: 0.25rem 0.1rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .lv-nav-item svg {
+    box-sizing: content-box;
+    padding: 0.2rem 0.85rem;
+    border-radius: 999px;
+    transition: background-color 140ms ease;
+  }
+
+  .lv-nav-item span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    clip-path: none;
+    max-width: 100%;
+    font-size: 0.64rem;
+    line-height: 1.15;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .lv-nav-active {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--lv-text);
+  }
+
+  .lv-nav-active svg {
+    background: var(--lv-control-hover);
+  }
+
+  .lv-toasts {
+    inset: auto 1rem calc(4.6rem + env(safe-area-inset-bottom)) 1rem;
+  }
+
+  .lv-bulk {
+    bottom: calc(4.6rem + env(safe-area-inset-bottom));
+  }
+}

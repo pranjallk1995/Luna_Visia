@@ -193,7 +193,8 @@ margins, or spacer elements.
 
 The brand stacks above the controls, the brand and the controls each stay on one line,
 and Sign out collapses to its icon. The page never scrolls sideways; wide tables
-scroll inside `lv-table-scroll`.
+scroll inside `lv-table-scroll`. The navbar moves to the bottom of the screen: see
+[Phone layout](#phone-layout).
 
 ## Primary navbar
 
@@ -222,18 +223,23 @@ size, zoom, and root font size. It is full width with equal-width items.
 }
 ```
 
-Each item is at least `2.55rem` tall with a `.65rem` radius. On phones the labels are
-visually hidden but stay readable by screen readers, leaving the icons.
+Each item is at least `2.55rem` tall with a `.65rem` radius. On phones the same markup
+becomes a tab bar along the bottom of the screen, with each icon above its label: see
+[Phone layout](#phone-layout).
 
 | App | Sections |
 | --- | --- |
 | Luna Visia | View Images, Favorite Images, Hidden Images |
-| Luna Vita | Daily Tracking, Monthly Tracking |
-| Luna Lumia | Lights, Rooms, Schemes, Schedules |
+| Luna Vita | Daily Tracking, Monthly Tracking, Health Reports |
+| Luna Lumia | Home, Schemes, Schedules, PC, Devices |
 | Luna Fiora | Overview, Transactions, EMIs & SIPs, Goals & reminders |
 | Luna Lexia | View Documents, Favorite Documents, Hidden Documents |
-| Luna Vibia | View Tracks, Favorite Tracks, Hidden Tracks |
+| Luna Vibia | View Tracks, Favorite Tracks, Playlists, Hidden Tracks |
 | Luna Unia | None: a single page (see [Known deviations](#known-deviations)) |
+| Luna Socia | None: one chat screen (see [Known deviations](#known-deviations)) |
+
+The first section is where people land, so it shows what is happening now and the
+everyday controls; setup lives in the last section. See [Everyday screens](#everyday-screens).
 
 The chosen section is remembered in browser storage, through `remember` and
 `remembered` in `lib.ts`, and the app must work the same when storage is refused.
@@ -252,6 +258,77 @@ border only.
 - **Hover:** control-hover background, strong border, `translateY(-1px)`, and a
   `140ms` transition on border, background, and transform.
 - **Focus:** the global `2px` accent outline for keyboard users, with no colour change.
+
+## Phone layout
+
+Phones (`max-width: 700px`) get their own arrangement, not a squeezed desktop: the
+things a thumb uses most sit at the bottom of the screen.
+
+- **Tabs along the bottom.** `lv-nav` is fixed to the bottom edge, full width, with a
+  top border only and a blurred `rgba(17,17,17,.94)` background. Each item stacks its
+  icon above a `.64rem` label that may wrap to two lines; the selected item shows its
+  icon on a control-hover pill and its label in primary text. The bar clears the home
+  indicator with `env(safe-area-inset-bottom)`, and `lv-page` gets bottom padding so
+  nothing hides under it.
+- **Panels become bottom sheets.** A desktop side panel (Lumia's control panel) becomes
+  a sheet fixed above the tab bar, with rounded top corners. Its head (what it changes,
+  with a chevron) toggles the rest; while nothing is selected only the head shows. The
+  sheet never covers more than `80vh` and scrolls inside.
+- **Everything pinned stays above the bar.** Toasts and selection bars (`lv-bulk`) sit
+  `4.6rem` above the bottom edge plus the safe area.
+- **Two columns at most.** Status strips use two columns with long cells spanning
+  both; tile grids use two columns.
+- **Touch targets** stay at least `2.75rem` (44px) in each direction.
+
+Every app with a navbar appends the same block to the end of its `styles.css`, under
+`/* Phones: the tabs move to a bar along the bottom */`, so it overrides the desktop
+rules:
+
+```css
+@media (max-width: 700px) {
+  .lv-page { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+  .lv-nav { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; gap: .1rem; margin: 0;
+    padding: .3rem .35rem calc(.3rem + env(safe-area-inset-bottom)); border-width: 1px 0 0;
+    border-radius: 0; background: rgba(17, 17, 17, .94); backdrop-filter: blur(12px); }
+  .lv-nav-item, .lv-nav-item:hover { flex-direction: column; gap: .2rem; min-width: 0;
+    min-height: 3.2rem; padding: .25rem .1rem; border: 0; background: transparent;
+    box-shadow: none; transform: none; }
+  .lv-nav-item svg { box-sizing: content-box; padding: .2rem .85rem; border-radius: 999px; }
+  .lv-nav-item span { position: static; width: auto; height: auto; clip-path: none;
+    max-width: 100%; font-size: .64rem; line-height: 1.15; text-align: center;
+    overflow-wrap: anywhere; }
+  .lv-nav-active { border: 0; background: transparent; box-shadow: none; color: var(--lv-text); }
+  .lv-nav-active svg { background: var(--lv-control-hover); }
+  .lv-toasts { inset: auto 1rem calc(4.6rem + env(safe-area-inset-bottom)) 1rem; }
+  .lv-bulk { bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
+}
+```
+
+## Everyday screens
+
+Luna Lumia's Home tab sets the pattern for an app's first section. Apply it wherever an
+app has live state and controls; galleries keep [Galleries](#galleries).
+
+- **A Now bar first.** A strip of cells (`grid-template-columns: repeat(auto-fit,
+  minmax(15rem, 1fr))`, `1px` gaps over the border color, `#171717` cells) saying what
+  is happening: a count with its one main switch, what is running with a **Stop**, what
+  happens next, and on/off pills for automations. Each cell is a muted label, a bold
+  value, and a muted detail line.
+- **Tiles show real state.** Each item is a tile whose look is its state (Lumia's rooms
+  glow in their lights' colors and brightness), with its status in words below the name
+  and its own quick switch in the corner. Off and offline tiles are flat and muted.
+- **Select, then act.** Tapping a tile selects it (strong border, a check in the
+  corner); several can be selected, and a chip row selects a saved set (Lumia's
+  groups). One control panel changes the whole selection, and with nothing selected it
+  says what it changes instead. No slider or menu is repeated on every card.
+- **The panel.** On desktop a sticky side panel (`flex: 1 1 20rem; max-width: 26rem`)
+  beside a `flex: 999 1 34rem` main column, wrapping under it on narrow windows: what it
+  changes and **Clear**, the quick actions (On / Off, brightness), then the rest
+  (modes, presets, saved schemes as buttons with a color strip, the items it covers). On
+  phones it is the bottom sheet from [Phone layout](#phone-layout).
+- **Setup apart from use.** Renaming, pictures, adding and finding devices, and deleting
+  live in the last section (Lumia's **Devices**), so no bin icon sits beside an everyday
+  control.
 
 ## Page selector
 
@@ -420,6 +497,40 @@ Screens only one app has. Their classes use the app's prefix.
   on phones. Status describes a result against its printed range; the page never
   offers a diagnosis.
 
+### Lumia: Home
+
+- [Everyday screens](#everyday-screens) as built: `ll-now` cells for the whole house
+  (`ll-power`, amber when any light is on), what is playing, the next schedule
+  (`upcomingSchedule`), and Weather and Music pills (`ll-auto`, sky and magenta when on)
+  that switch the automations through `PUT /api/automations/{weather,music}`.
+- `ll-tile` per room, then **Other lights** (`ll-tiles-small`) for lights in no room.
+  `tileGlow` layers a radial gradient per lit light, alpha `.2 + .5 × brightness`;
+  a light showing black glows faint white so it still reads as on.
+- `ll-dock` is the control panel: On / Off, brightness, **White** (temperature and
+  presets) or **Color** (picker and chips), the everyday schemes (no weather, music, or
+  per-key ones; playing first, then yours), and the selected lights, each of which can be
+  selected alone.
+
+### Lumia: Schemes, Schedules, Devices
+
+- **List with a side panel** (`ll-split`): a `flex: 999 1 34rem` main column and a
+  `20rem`–`26rem` side column that wraps below it under `960px`. A panel that edits
+  (`ll-split-panel`) is sticky on desktop.
+- **Schemes:** a **Plays on** chip row (`ll-plays-on`) shares Home's selection, so a
+  scheme plays where Home has rooms selected; on phones the row scrolls sideways. Cards
+  (`ll-scheme-card`) lead with the scheme's color strip, then **Play** or **Stop**, and
+  edit and delete for your own; a playing card is outlined amber. The side column holds
+  **Follow the weather** and **Follow the music**, each a switch over the schemes its
+  slots play. Transitions follow below.
+- **Schedules:** the Today strip, then rows (`ll-schedule`) with the time, what it does
+  over its scheme's strip, the weekdays as letters, and a pause switch. Selecting a row
+  opens it in the editor beside the list, where **Do** is one menu (turn on, turn off, or
+  play a scheme), **On** is chips for every room and group plus a menu for one light, and
+  days are round letter buttons.
+- **Devices:** a setup strip (adding lights, finding moved ones, PC devices, location),
+  rooms and groups as picture cards (`ll-place`), and every light in one table with its
+  room as a menu, its kind and address, its status, and its picture and delete actions.
+
 ### Lumia: PC tab
 
 - One `ll-panel ll-pc-card` per PC light: keyboards first, then mice and case parts.
@@ -451,6 +562,7 @@ guide or deliberately accepted here.
 | Lumia | Deleting a light, room, scheme, or schedule has no confirmation. | Nothing here deletes a stored file, so this is accepted for now. Revisit if mistaken deletes happen. |
 | Unia | In windows 1760px and wider, the page grows to `1720px` and the card grid to four columns, as in Visia, Vibia, and Lexia. | `max-width: 1180px`. Accepted, because the cards have room to use at that width. |
 | Unia | No navbar. Its one page is a grid of app cards, and the status summary above the grid (`.lu-summary`) takes the navbar's surface and `.2rem 0 1.15rem` margin. | Full-width navbar below the header. Accepted: Unia has nothing to navigate between. |
+| Socia | No navbar, so no tab bar on phones. Its one screen is the chat, already laid out for phones. | [Phone layout](#phone-layout). Accepted: there are no sections to switch between. |
 | Unia | Checks each app at `/_stcore/health`, which every gateway keeps as an alias of `/health`. | Move to `/health` and remove the alias once every app has merged its React UI. |
 
 ## Checklists
@@ -461,7 +573,8 @@ guide or deliberately accepted here.
 2. Logo, title, subtitle, and controls stay vertically centred.
 3. Nothing renders above the header.
 4. On phones, the brand stays on one line, the subtitle is hidden, the control row stays
-   on one line, Sign out shows only its icon, and the page does not scroll sideways.
+   on one line, Sign out shows only its icon, the page does not scroll sideways, and the
+   tabs sit along the bottom with nothing hidden under them.
 5. A hard refresh gives the same position as moving between sections.
 6. `npm run build` passes, and the browser console shows no errors.
 7. Check the running container, not just the source. Compose Watch restarts the gateway
