@@ -497,6 +497,58 @@ Run or resume an idempotent metadata backfill through the MCP `backfill_metadata
 
 ## Data model
 
+### Database diagram
+
+Each person's schema (`u_<id>` in the `lunavisia` database) holds these tables, drawn from the live database. Lines are foreign keys; a table without one is joined by value (a name, a date, an ID kept as text). `PK` marks primary keys, `FK` foreign keys, `UK` unique columns.
+
+```mermaid
+erDiagram
+    image_metadata {
+        text name PK
+        uuid image_id
+        int8 size_bytes
+        bpchar content_sha256
+        text caption
+        text_array tags
+        text analysis_model
+        timestamptz created_at
+        timestamptz updated_at
+        tsvector search_vector
+        bool hidden
+        bool favorite
+        text public_url
+        int4 showcase_rank
+        vector embedding
+        text embedding_model
+        bool starter
+    }
+    starter_pack {
+        bool singleton PK
+        text state
+        text source
+        timestamptz decided_at
+        timestamptz loaded_at
+    }
+    starter_received {
+        uuid source_image_id PK
+        timestamptz received_at
+    }
+    vault_config {
+        bool singleton PK
+        text public_base_url
+        timestamptz updated_at
+    }
+    vault_security {
+        bool singleton PK
+        bytea password_salt
+        bytea password_hash
+        bytea reset_pin_salt
+        bytea reset_pin_hash
+        int4 iterations
+        timestamptz updated_at
+    }
+```
+
 ### `image_metadata`
 
 Stores one row per image: immutable UUID, filename, byte size, SHA-256 content hash, AI caption, normalized tag array, analysis model, creation and update timestamps, hidden state, favorite state, and optional public URL. A weighted PostgreSQL `tsvector` indexes filenames, captions, and tags, with additional indexes for the immutable ID, tags, hashes, hidden images, and Favorites.
